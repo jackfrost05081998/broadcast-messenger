@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -41,6 +42,25 @@ def _signature_valid(payload: bytes, signature: str | None, *secrets: str | None
         if secret and _verify_signature(payload, signature, secret):
             return True
     return False
+
+
+def _event_inbound_at(event: dict) -> datetime:
+    ts_ms = event.get("timestamp")
+    if ts_ms:
+        return datetime.utcfromtimestamp(int(ts_ms) / 1000)
+    return datetime.utcnow()
+
+
+def _should_send_auto_reply(contact: PageContact | None, inbound_at: datetime) -> bool:
+    """Only auto-reply to the first inbound message in a session.
+
+    Skip follow-ups within 24 hours, and skip re-engagement messages that arrive
+    more than 24 hours after the previous inbound (no repeat auto-reply).
+    """
+    if not contact or not contact.last_inbound_at:
+        return True
+    gap = inbound_at - contact.last_inbound_at
+    return gap < timedelta(hours=24) and not contact.auto_reply_sent_at
 
 
 @router.get("/messenger")
@@ -145,6 +165,8 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             if not sender_psid or sender_psid == page_id:
                 continue
 
+            inbound_at = _event_inbound_at(event)
+
             contact_result = await db.execute(
                 select(PageContact).where(
                     PageContact.user_id == page.user_id,
@@ -153,6 +175,26 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 )
             )
             contact = contact_result.scalar_one_or_none()
+
+            if not _should_send_auto_reply(contact, inbound_at):
+                if contact:
+                    if contact.last_inbound_at and inbound_at - contact.last_inbound_at >= timedelta(
+                        hours=24
+                    ):
+                        logger.warning(
+                            "Skipping auto-reply — follow-up after 24h for psid %s on page %s",
+                            sender_psid,
+                            page_id,
+                        )
+                    else:
+                        logger.warning(
+                            "Skipping auto-reply — not first message in session for psid %s on page %s",
+                            sender_psid,
+                            page_id,
+                        )
+                    contact.last_inbound_at = inbound_at
+                continue
+
             recipient_name = contact.name if contact else None
             text = personalize_message(recipient_name, template_body)
 
@@ -165,7 +207,24 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     messaging_type="RESPONSE",
                 )
                 logger.warning("Auto-reply sent to psid %s on page %s", sender_psid, page_id)
+                if contact:
+                    contact.auto_reply_sent_at = inbound_at
+                    contact.last_inbound_at = inbound_at
+                else:
+                    db.add(
+                        PageContact(
+                            user_id=page.user_id,
+                            page_id=page_id,
+                            psid=sender_psid,
+                            name="Unknown",
+                            auto_reply_sent_at=inbound_at,
+                            last_inbound_at=inbound_at,
+                        )
+                    )
             except FacebookAPIError as exc:
                 logger.warning("Auto-reply failed for psid %s: %s", sender_psid, exc.user_hint)
+                if contact:
+                    contact.last_inbound_at = inbound_at
 
+    await db.commit()
     return PlainTextResponse("OK")

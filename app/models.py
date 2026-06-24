@@ -82,6 +82,8 @@ class PageContact(Base):
     updated_time = Column(String(64), nullable=True)
     message_count = Column(Integer, default=0)
     synced_at = Column(DateTime, default=datetime.utcnow)
+    last_inbound_at = Column(DateTime, nullable=True)
+    auto_reply_sent_at = Column(DateTime, nullable=True)
 
 
 class Broadcast(Base):

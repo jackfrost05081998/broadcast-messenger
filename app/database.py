@@ -32,10 +32,22 @@ def _ensure_user_meta_columns(connection) -> None:
         connection.execute(text("ALTER TABLE users ADD COLUMN meta_app_secret TEXT"))
 
 
+def _ensure_page_contact_auto_reply_columns(connection) -> None:
+    inspector = inspect(connection)
+    if "page_contacts" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("page_contacts")}
+    if "last_inbound_at" not in columns:
+        connection.execute(text("ALTER TABLE page_contacts ADD COLUMN last_inbound_at TIMESTAMP"))
+    if "auto_reply_sent_at" not in columns:
+        connection.execute(text("ALTER TABLE page_contacts ADD COLUMN auto_reply_sent_at TIMESTAMP"))
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_user_meta_columns)
+        await conn.run_sync(_ensure_page_contact_auto_reply_columns)
 
 
 async def get_db():
