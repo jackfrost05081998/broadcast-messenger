@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.facebook import FacebookAPIError, facebook_service
 from app.messages import personalize_message
+from app.meta_app import credentials_from_env
 from app.models import FacebookPage, PageAutomation, PageContact
 from app.scheduler import process_due_follow_ups
 
@@ -31,6 +32,15 @@ def _verify_signature(payload: bytes, signature: str | None, app_secret: str) ->
         hashlib.sha256,
     ).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", signature)
+
+
+def _signature_valid(payload: bytes, signature: str | None, *secrets: str | None) -> bool:
+    if not signature:
+        return False
+    for secret in secrets:
+        if secret and _verify_signature(payload, signature, secret):
+            return True
+    return False
 
 
 @router.get("/messenger")
@@ -56,6 +66,12 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if data.get("object") != "page":
         return PlainTextResponse("OK")
 
+    entry_count = len(data.get("entry", []))
+    logger.warning(
+        "Messenger webhook POST received: entries=%s",
+        entry_count,
+    )
+
     # Wake Render free tier on inbound messages; also drains due follow-ups.
     try:
         await process_due_follow_ups()
@@ -79,11 +95,16 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
         user = page.user
         app_secret = user.meta_app_secret if user else None
+        env_creds = credentials_from_env()
+        env_secret = env_creds.app_secret if env_creds else None
         signature = request.headers.get("X-Hub-Signature-256")
-        if app_secret and not _verify_signature(body, signature, app_secret):
+        if (app_secret or env_secret) and not _signature_valid(
+            body, signature, app_secret, env_secret
+        ):
             logger.warning(
-                "Webhook signature mismatch for page %s — re-save App Secret on sign-in",
+                "Webhook signature mismatch for page %s (header=%s) — re-save App Secret on sign-in",
                 page_id,
+                "present" if signature else "missing",
             )
             continue
 
@@ -108,7 +129,11 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
         template_body = automation.reply_template.body
         events = entry.get("messaging", [])
-        logger.info("Processing %s messaging event(s) for page %s", len(events), page_id)
+        logger.warning(
+            "Auto-reply processing %s event(s) for page %s (reply_enabled=true)",
+            len(events),
+            page_id,
+        )
 
         for event in events:
             if event.get("message", {}).get("is_echo"):
@@ -139,7 +164,7 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     text,
                     messaging_type="RESPONSE",
                 )
-                logger.info("Auto-reply sent to psid %s on page %s", sender_psid, page_id)
+                logger.warning("Auto-reply sent to psid %s on page %s", sender_psid, page_id)
             except FacebookAPIError as exc:
                 logger.warning("Auto-reply failed for psid %s: %s", sender_psid, exc.user_hint)
 

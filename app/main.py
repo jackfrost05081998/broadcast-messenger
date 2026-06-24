@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+    logging.getLogger("app").setLevel(logging.INFO)
+
+
+_configure_logging()
+
+
 @asynccontextmanager
 async def lifespan(app):
     await init_db()

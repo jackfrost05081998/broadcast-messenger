@@ -147,6 +147,22 @@
             <li>Verify token: <code class="code-block">{{ webhook_verify_token }}</code></li>
             <li>Subscribe to: <strong>messages</strong></li>
           </ul>
+          {% if webhook_status %}
+          <p style="margin: 0.75rem 0 0;">
+            <strong>Meta webhook status:</strong>
+            {% if webhook_status.callback_matches and webhook_status.messages_subscribed %}
+              <span style="color: var(--success, #059669);">Connected ✓</span>
+            {% elif webhook_status.callback_url %}
+              <span style="color: var(--warning, #d97706);">Registered but URL mismatch</span>
+              — Meta has <code>{{ webhook_status.callback_url }}</code>, expected <code>{{ webhook_status.expected_url }}</code>.
+              Save automation again or update Meta manually.
+            {% else %}
+              <span style="color: var(--warning, #d97706);">Not registered</span>
+              — enable auto-reply above and click Save to register automatically.
+            {% endif %}
+          </p>
+          {% endif %}
+          <p class="field-hint" style="margin-top: 0.5rem;">After saving, message your Page and check Render logs for <code>Messenger webhook POST received</code>.</p>
         </div>
       </div>
     </div>

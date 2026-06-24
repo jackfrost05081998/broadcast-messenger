@@ -219,6 +219,12 @@ async def facebook_callback(
             )
             db.add(fb_page)
 
+        webhook_ok, webhook_msg = await facebook_service.ensure_app_webhook(creds)
+        if webhook_ok:
+            logger.info("Meta webhook ready after connect: %s", webhook_msg)
+        else:
+            logger.warning("Meta webhook not registered after connect: %s", webhook_msg)
+
         await db.commit()
 
     except FacebookAPIError as e:

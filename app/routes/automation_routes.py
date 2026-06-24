@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 from app.config import get_settings
 from app.database import get_db
 from app.dependencies import get_optional_user
+from app.facebook import facebook_service
+from app.meta_app import credentials_from_user
 from app.models import FacebookPage, MessageTemplate, PageAutomation, User
 
 router = APIRouter(tags=["automation"])
@@ -82,6 +84,10 @@ async def page_automation(
     reply_templates = [t for t in all_templates if t.kind == "reply"]
 
     saved = request.query_params.get("saved") == "1"
+    webhook_status = None
+    creds = credentials_from_user(user)
+    if creds:
+        webhook_status = await facebook_service.get_app_webhook_status(creds)
 
     return templates.TemplateResponse(
         request,
@@ -95,6 +101,7 @@ async def page_automation(
             "reply_templates": reply_templates,
             "webhook_url": f"{settings.app_url}/webhook/messenger",
             "webhook_verify_token": settings.webhook_verify_token,
+            "webhook_status": webhook_status,
             "saved": saved,
         },
     )
@@ -130,6 +137,14 @@ async def save_page_automation(
     automation.reply_template_id = (
         int(reply_template_id) if reply_template_id.strip() else None
     )
+
+    if automation.reply_enabled:
+        creds = credentials_from_user(user)
+        if creds:
+            await facebook_service.ensure_app_webhook(creds)
+        await facebook_service.subscribe_page_to_messenger(
+            page.page_id, page.access_token
+        )
 
     await db.commit()
     return RedirectResponse(f"/pages/{page_id}/automation?saved=1", status_code=302)

@@ -288,6 +288,66 @@ class FacebookService:
             logger.warning("Messenger subscribe failed for page %s: %s", page_id, exc)
             return False
 
+    def app_access_token(self, credentials: MetaAppCredentials) -> str:
+        return f"{credentials.app_id}|{credentials.app_secret}"
+
+    async def ensure_app_webhook(
+        self, credentials: MetaAppCredentials
+    ) -> tuple[bool, str]:
+        """Register this app's Messenger webhook callback with Meta."""
+        settings = get_settings()
+        callback_url = f"{settings.app_url}/webhook/messenger"
+        verify_token = settings.webhook_verify_token
+        app_token = self.app_access_token(credentials)
+        try:
+            await self._post_form(
+                f"/{credentials.app_id}/subscriptions",
+                {"access_token": app_token},
+                {
+                    "object": "page",
+                    "callback_url": callback_url,
+                    "verify_token": verify_token,
+                    "fields": "messages,messaging_postbacks,message_deliveries",
+                },
+            )
+            logger.info("Registered Meta webhook for app %s → %s", credentials.app_id, callback_url)
+            return True, f"Webhook registered: {callback_url}"
+        except FacebookAPIError as exc:
+            logger.warning("Meta webhook registration failed for app %s: %s", credentials.app_id, exc)
+            return False, exc.user_hint
+
+    async def get_app_webhook_status(
+        self, credentials: MetaAppCredentials
+    ) -> dict[str, Any] | None:
+        """Return Meta webhook subscription details for this app, if any."""
+        try:
+            data = await self._get(
+                f"/{credentials.app_id}/subscriptions",
+                {"access_token": self.app_access_token(credentials)},
+            )
+            settings = get_settings()
+            expected_url = f"{settings.app_url}/webhook/messenger"
+            for sub in data.get("data", []):
+                if sub.get("object") != "page":
+                    continue
+                callback = sub.get("callback_url", "")
+                fields = [
+                    f.get("name") if isinstance(f, dict) else str(f)
+                    for f in sub.get("fields", [])
+                ]
+                return {
+                    "active": bool(sub.get("active", True)),
+                    "callback_url": callback,
+                    "callback_matches": callback.rstrip("/") == expected_url.rstrip("/"),
+                    "expected_url": expected_url,
+                    "fields": fields,
+                    "messages_subscribed": "messages" in fields,
+                }
+            return {"active": False, "expected_url": expected_url, "callback_url": None}
+        except FacebookAPIError as exc:
+            logger.info("Could not read Meta webhook status: %s", exc)
+            return None
+
     async def is_page_subscribed(
         self, page_id: str, page_access_token: str, app_id: str | None = None
     ) -> bool:
@@ -402,6 +462,19 @@ class FacebookService:
         try:
             async with httpx.AsyncClient(timeout=45.0) as client:
                 response = await client.post(url, params=params, json=json_body)
+                return self._handle_response(response)
+        except FacebookAPIError:
+            raise
+        except httpx.HTTPError as exc:
+            raise FacebookAPIError(f"Could not reach Facebook: {exc}") from exc
+
+    async def _post_form(
+        self, path: str, params: Dict[str, Any], form: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        url = f"{self.api_base}{path}"
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                response = await client.post(url, params=params, data=form)
                 return self._handle_response(response)
         except FacebookAPIError:
             raise
