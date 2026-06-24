@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Broadcast result — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="breadcrumb">
+        <a href="/pages/{{ broadcast.page_id }}" class="breadcrumb-back">← Back to contacts</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main page-enter">
+    <div class="card" style="margin-bottom: 1.25rem;">
+      <h1 class="panel-title" style="font-size: 1.5rem; margin-bottom: 0.375rem;">
+        {% if broadcast.success_count > 0 %}Broadcast complete{% else %}Broadcast finished with errors{% endif %}
+      </h1>
+      <p class="text-muted text-sm">Sent from <strong>{{ broadcast.page_name }}</strong></p>
+
+      {% if broadcast.success_count == 0 and broadcast.failure_count > 0 %}
+      <div class="alert alert-error" style="margin-top: 1rem; margin-bottom: 0;">
+        <strong>No messages were delivered.</strong> Common causes:
+        <ul style="margin: 0.5rem 0 0 1rem;">
+          <li><strong>Human Agent not approved</strong> — old inquirers need Message Tag approval. Use <strong>Smart mode</strong> or submit App Review — <a href="/go-live" class="link">Go Live guide</a>.</li>
+          <li><strong>Outside 24 hours</strong> — only recent inquirers can receive Standard Reply without tag approval.</li>
+          <li><strong>Development mode</strong> — non-testers may be blocked until your app is Live.</li>
+          <li><strong>Stale contacts</strong> — refresh contacts and skip people marked unreachable.</li>
+        </ul>
+      </div>
+      {% elif broadcast.failure_count > 0 %}
+      <div class="alert alert-warning" style="margin-top: 1rem; margin-bottom: 0;">
+        <strong>{{ broadcast.success_count }} sent, {{ broadcast.failure_count }} failed.</strong>
+        Most failures are Meta policy limits (tag not approved, outside 24h, or unreachable contact).
+        See delivery details below.
+      </div>
+      {% endif %}
+
+      <div class="stats-grid">
+        <div class="stat-card stat-card-neutral">
+          <div class="stat-value">{{ broadcast.total_recipients }}</div>
+          <div class="stat-label">Total</div>
+        </div>
+        <div class="stat-card stat-card-success">
+          <div class="stat-value">{{ broadcast.success_count }}</div>
+          <div class="stat-label">Sent</div>
+        </div>
+        <div class="stat-card stat-card-danger">
+          <div class="stat-value">{{ broadcast.failure_count }}</div>
+          <div class="stat-label">Failed</div>
+        </div>
+      </div>
+
+      <div class="message-preview">
+        <div class="message-preview-label">Message sent</div>
+        <div class="message-preview-body">{{ broadcast.message_text }}</div>
+      </div>
+    </div>
+
+    {% if recipients %}
+    <div class="card">
+      <h2 class="panel-title" style="margin-bottom: 1rem;">Delivery details</h2>
+      <div class="delivery-list">
+        {% for r in recipients %}
+        <div class="delivery-row">
+          <span>
+            {% if r.recipient_name %}{{ r.recipient_name }}{% else %}<span class="font-mono text-muted">{{ r.recipient_psid }}</span>{% endif %}
+          </span>
+          {% if r.success %}
+          <span class="status-sent">Sent</span>
+          {% else %}
+          <span class="status-failed">
+            Failed{% if r.error_message %} — {{ r.error_message }}{% endif %}
+          </span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

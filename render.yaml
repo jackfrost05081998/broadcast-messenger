@@ -1,0 +1,14 @@
+# Render Blueprint — free web tier (no credit card).
+# Facebook App ID/Secret are NOT required here: each user pastes their own on sign-in.
+services:
+  - type: web
+    name: broadcast-messenger
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

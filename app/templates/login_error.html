@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign in — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner site-header-inner-narrow">
+      <a href="/" class="brand">{% include "partials/brand.html" %}</a>
+    </div>
+  </header>
+
+  <main class="page-main page-main-narrow page-enter">
+    <div class="card">
+      <h1 class="panel-title" style="font-size: 1.5rem; margin-bottom: 0.75rem;">Sign-in issue</h1>
+
+      {% if error %}
+      <div class="alert alert-error">{{ error }}</div>
+      {% endif %}
+
+      <div class="gap-buttons" style="margin-top: 1.25rem;">
+        <a href="/auth/facebook/connect" class="btn btn-facebook">Try again with Facebook</a>
+        <a href="/setup/app?edit=1" class="btn btn-secondary">App settings</a>
+        <a href="/go-live" class="btn btn-secondary">Go Live guide</a>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

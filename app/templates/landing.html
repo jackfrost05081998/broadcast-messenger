@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Broadcast Messenger for Facebook Pages{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="/" class="brand">{% include "partials/brand.html" %}</a>
+      <a href="/setup/app" class="btn btn-primary btn-sm">Sign in</a>
+    </div>
+  </header>
+
+  <section class="hero page-enter">
+    <div class="hero-inner">
+      <span class="hero-badge">Facebook Page broadcasts</span>
+      <h1 class="hero-title">Never lose a lead again</h1>
+      <p class="hero-subtitle">
+        Send messages massively to everyone you've already talked with on your Facebook Pages.
+        Launch a full campaign in one click.
+      </p>
+      <a href="/setup/app" class="btn btn-facebook btn-lg">
+        <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+        Sign in with Facebook
+      </a>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-inner">
+      <h2 class="section-title">How it works</h2>
+      <div class="steps-grid">
+        <div class="card step-card">
+          <div class="step-num">1</div>
+          <h3>Sign in with Facebook</h3>
+          <p>One click. If you're logged in, Facebook asks you to continue as your name.</p>
+        </div>
+        <div class="card step-card">
+          <div class="step-num">2</div>
+          <h3>Grant Page access</h3>
+          <p>Approve access to your Facebook Pages. No developer setup for end users.</p>
+        </div>
+        <div class="card step-card">
+          <div class="step-num">3</div>
+          <h3>Broadcast in one click</h3>
+          <p>Select contacts from past conversations and send your message to everyone at once.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    {{ app_name }} — Multi-user Facebook Page broadcast messenger
+  </footer>
+</div>
+{% endblock %}

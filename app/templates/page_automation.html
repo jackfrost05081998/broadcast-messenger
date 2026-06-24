@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Automation — {{ page.name }}{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="breadcrumb">
+        <a href="/pages/{{ page.page_id }}" class="breadcrumb-back">← Contacts</a>
+        <span class="breadcrumb-divider">|</span>
+        <span class="breadcrumb-current">Automation</span>
+      </div>
+      <span class="user-badge">{{ user.name }}</span>
+    </div>
+  </header>
+
+  <main class="page-main page-enter">
+    {% if saved %}
+    <div class="alert alert-success">Settings saved.</div>
+    {% endif %}
+
+    <div class="page-heading">
+      <h1>Automation — {{ page.name }}</h1>
+      <p>Templates are personalized automatically: <strong>Hi <em>First name</em>,</strong> then your message.</p>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2 class="panel-title" style="margin-bottom: 1rem;">Message templates</h2>
+
+        <form method="post" action="/templates" class="field" style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
+          <input type="hidden" name="page_id" value="{{ page.page_id }}">
+          <div class="field">
+            <label class="label">Template name</label>
+            <input type="text" name="name" class="input" placeholder="e.g. Week 1 follow-up" required>
+          </div>
+          <div class="field">
+            <label class="label">Type</label>
+            <select name="kind" class="input">
+              <option value="follow_up">Follow-up (scheduled)</option>
+              <option value="reply">Auto-reply (when they message you)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label">Message body</label>
+            <textarea name="body" rows="4" class="input" required placeholder="Just checking in — did you still have questions about the property?"></textarea>
+            <p class="field-hint">We add <code>Hi FirstName,</code> automatically before this text.</p>
+          </div>
+          <button type="submit" class="btn btn-secondary btn-sm">Add template</button>
+        </form>
+
+        {% if follow_up_templates %}
+        <h3 class="text-sm" style="margin-bottom: 0.5rem; font-weight: 600;">Follow-up templates</h3>
+        <ul class="text-sm" style="margin: 0 0 1rem; padding-left: 1.25rem;">
+          {% for t in follow_up_templates %}
+          <li style="margin-bottom: 0.75rem;">
+            <strong>{{ t.name }}</strong>
+            <div class="text-muted" style="white-space: pre-wrap; margin-top: 0.25rem;">Hi <em>Name</em>,
+
+{{ t.body }}</div>
+            <form method="post" action="/templates/{{ t.id }}/delete" style="display:inline; margin-top: 0.25rem;">
+              <input type="hidden" name="page_id" value="{{ page.page_id }}">
+              <button type="submit" class="btn btn-secondary btn-sm" style="margin-top: 0.35rem;" onclick="return confirm('Delete this template?')">Delete</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if reply_templates %}
+        <h3 class="text-sm" style="margin-bottom: 0.5rem; font-weight: 600;">Auto-reply templates</h3>
+        <ul class="text-sm" style="margin: 0; padding-left: 1.25rem;">
+          {% for t in reply_templates %}
+          <li style="margin-bottom: 0.75rem;">
+            <strong>{{ t.name }}</strong>
+            <div class="text-muted" style="white-space: pre-wrap; margin-top: 0.25rem;">Hi <em>Name</em>,
+
+{{ t.body }}</div>
+            <form method="post" action="/templates/{{ t.id }}/delete" style="display:inline;">
+              <input type="hidden" name="page_id" value="{{ page.page_id }}">
+              <button type="submit" class="btn btn-secondary btn-sm" style="margin-top: 0.35rem;" onclick="return confirm('Delete this template?')">Delete</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if not follow_up_templates and not reply_templates %}
+        <p class="text-muted text-sm">No templates yet. Create one above.</p>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h2 class="panel-title" style="margin-bottom: 1rem;">Automation rules</h2>
+
+        <form method="post" action="/pages/{{ page.page_id }}/automation">
+          <div class="field">
+            <label class="label" style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" name="follow_up_enabled" value="1" {% if automation.follow_up_enabled %}checked{% endif %}>
+              Scheduled follow-up after broadcast
+            </label>
+            <p class="field-hint">When enabled, you can schedule a follow-up from the broadcast screen.</p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="follow_up_days">Follow-up delay (days)</label>
+            <input type="number" id="follow_up_days" name="follow_up_days" class="input" min="1" max="90" value="{{ automation.follow_up_days or 7 }}">
+          </div>
+
+          <div class="field">
+            <label class="label" for="follow_up_template_id">Default follow-up template</label>
+            <select id="follow_up_template_id" name="follow_up_template_id" class="input">
+              <option value="">— Select —</option>
+              {% for t in follow_up_templates %}
+              <option value="{{ t.id }}" {% if automation.follow_up_template_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <hr style="border: none; border-top: 1px solid var(--border); margin: 1.25rem 0;">
+
+          <div class="field">
+            <label class="label" style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" name="reply_enabled" value="1" {% if automation.reply_enabled %}checked{% endif %}>
+              Auto-reply when an inquirer messages your Page
+            </label>
+            <p class="field-hint">Requires Messenger webhook setup in your Meta app (see below).</p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="reply_template_id">Auto-reply template</label>
+            <select id="reply_template_id" name="reply_template_id" class="input">
+              <option value="">— Select —</option>
+              {% for t in reply_templates %}
+              <option value="{{ t.id }}" {% if automation.reply_template_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Save automation</button>
+        </form>
+
+        <div class="alert alert-info text-sm" style="margin-top: 1.5rem;">
+          <strong>Webhook setup (for auto-reply)</strong>
+          <p style="margin: 0.5rem 0 0;">In your Meta app → Messenger → Webhooks:</p>
+          <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem;">
+            <li>Callback URL: <code class="code-block">{{ webhook_url }}</code></li>
+            <li>Verify token: <code class="code-block">{{ webhook_verify_token }}</code></li>
+            <li>Subscribe to: <strong>messages</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

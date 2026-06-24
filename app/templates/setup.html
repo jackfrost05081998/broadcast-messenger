@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Setup — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner site-header-inner-narrow">
+      <a href="/" class="brand">{% include "partials/brand.html" %}</a>
+    </div>
+  </header>
+
+  <main class="page-main page-main-narrow page-enter">
+    <div class="card">
+      <h1 class="panel-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Facebook App setup required</h1>
+      <p class="text-muted text-sm" style="margin: 0 0 1.5rem;">
+        Your <code>.env</code> file needs a real Facebook App ID before sign-in works.
+      </p>
+
+      {% if error %}
+      <div class="alert alert-error">{{ error }}</div>
+      {% endif %}
+
+      <div class="alert alert-warning">
+        <strong>Current value:</strong>
+        <code class="code-block">FACEBOOK_APP_ID={{ current_app_id or "(empty)" }}</code>
+        Must be a <strong>numeric</strong> ID like <code>123456789012345</code>.
+      </div>
+
+      <h2 class="panel-title" style="margin: 1.5rem 0 1rem;">Step-by-step</h2>
+      <ol class="setup-steps">
+        <li>
+          <strong>Create the app</strong><br>
+          <a href="https://developers.facebook.com/apps/" class="link" target="_blank">developers.facebook.com/apps</a>
+          → <strong>Create App</strong> → <strong>Other</strong> → <strong>Business</strong> → Create.
+        </li>
+        <li>
+          <strong>Add products</strong><br>
+          Set up <strong>Facebook Login for Business</strong> and <strong>Messenger</strong>.
+        </li>
+        <li>
+          <strong>Messenger — no webhook required</strong><br>
+          You do <em>not</em> need to configure Messenger webhooks to send broadcasts.
+          This app links your Page to Messenger automatically when you sign in.
+          Optional: under <strong>Messenger → Settings</strong>, confirm your Page is listed.
+        </li>
+        <li>
+          <strong>OAuth settings</strong><br>
+          Enable <strong>Client OAuth login</strong> and <strong>Web OAuth login</strong>.
+          Localhost redirects are auto-allowed in Development mode.
+        </li>
+        <li>
+          <strong>App settings → Basic</strong><br>
+          Add <code>localhost</code> to App domains. Copy App ID and Secret to <code>.env</code>.
+        </li>
+        <li>
+          <strong>App roles → Roles</strong><br>
+          Add yourself as a tester while in Development mode.
+        </li>
+        <li><strong>Restart the server</strong> and sign in again.</li>
+      </ol>
+
+      <div class="gap-buttons" style="margin-top: 1.5rem;">
+        <a href="/login" class="btn btn-primary">Try sign in again</a>
+        <a href="/go-live" class="btn btn-secondary">Go Live guide</a>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

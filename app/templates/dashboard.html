@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="/dashboard" class="brand">{% include "partials/brand.html" %}</a>
+      <div class="header-actions">
+        <span class="user-badge">{{ facebook_name }}</span>
+        <a href="/setup/app?edit=1" class="header-link">App settings</a>
+        <a href="/auth/facebook/reconnect" class="header-link">Reconnect</a>
+        <form method="post" action="/logout">
+          <button type="submit" class="header-link">Sign out</button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main page-enter">
+    {% if message %}
+    <div class="alert alert-info">{{ message }}</div>
+    {% endif %}
+
+    <div class="page-heading">
+      <h1>Your Facebook Pages</h1>
+      <p>Select a Page to view contacts and send broadcast messages.</p>
+    </div>
+
+    {% if pages %}
+    <div class="page-grid">
+      {% for page in pages %}
+      <a href="/pages/{{ page.page_id }}" class="card card-hover page-card">
+        <div class="page-card-body">
+          {% if page.picture_url %}
+          <img src="{{ page.picture_url }}" alt="{{ page.name }}" class="page-card-avatar">
+          {% else %}
+          <div class="page-card-avatar-fallback">{{ page.name[0] }}</div>
+          {% endif %}
+          <div class="page-card-meta">
+            <h2>{{ page.name }}</h2>
+            {% if page.category %}<p>{{ page.category }}</p>{% endif %}
+          </div>
+        </div>
+        <span class="page-card-link">View contacts →</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="card empty-state">
+      <div class="empty-state-icon">📄</div>
+      <p>No Facebook Pages found. Make sure you are an admin of at least one Page.</p>
+      <a href="/auth/facebook/reconnect" class="btn btn-facebook">Reconnect Facebook</a>
+    </div>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}{% if user %}App settings{% else %}Sign in{% endif %} — {{ app_name }}{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner site-header-inner-narrow">
+      <a href="/" class="brand">{% include "partials/brand.html" %}</a>
+      {% if user %}
+      <a href="/dashboard" class="header-link">Dashboard</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="page-main page-main-narrow page-enter">
+    <div class="card" style="margin-bottom: 1.25rem;">
+      {% if user %}
+      <h1 class="panel-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">App settings</h1>
+      <p class="text-muted text-sm" style="margin: 0;">
+        Update your Meta <strong>App ID</strong> and <strong>App Secret</strong>. Saved to <strong>your account</strong> in the database.
+        If you change the App ID, use <strong>Reconnect</strong> on the dashboard afterward.
+      </p>
+      {% else %}
+      <h1 class="panel-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Sign in with your Meta Developer app</h1>
+      <p class="text-muted text-sm" style="margin: 0;">
+        Before connecting Facebook, paste <strong>your</strong> App ID and App Secret below.
+        Each person uses their own Meta app — credentials are saved to your account, not shared with other users.
+      </p>
+      {% endif %}
+    </div>
+
+    {% if cloud_deployment %}
+    <div class="alert alert-info" style="margin-bottom: 1rem;">
+      <strong>Shared site, your own Meta app.</strong> Paste your App ID and Secret below — they are stored in the database for your account only.
+      This does <em>not</em> change Render environment variables. Each user must add the OAuth redirect URI below to their own Meta app.
+    </div>
+    {% endif %}
+
+    {% if error == "app_not_active" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">
+      <strong>App not active.</strong> The Meta app you used is not yours or you are not added as a tester.
+      Create your own app (or use one you own), paste its App ID and App Secret below, then sign in again.
+    </div>
+    {% elif error == "access_denied" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">
+      Facebook access was denied. Grant Page permissions when prompted after you sign in.
+    </div>
+    {% elif error == "invalid_oauth" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">Sign-in was interrupted. Save your app credentials and try again.</div>
+    {% elif error == "connection_failed" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">Could not connect to Facebook. Check your App ID and Secret, then try again.</div>
+    {% elif error == "facebook_api" and error_message %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">{{ error_message }}</div>
+    {% elif error == "invalid_app_id" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">App ID must be a numeric ID from Meta (e.g. 123456789012345).</div>
+    {% elif error == "missing_secret" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">App Secret is required. Copy it from App Settings → Basic.</div>
+    {% elif error == "invalid_secret" %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">App Secret looks invalid. It should be at least 16 characters.</div>
+    {% endif %}
+
+    {% if saved %}
+    <div class="alert alert-success" style="margin-bottom: 1rem;">
+      {% if cloud_deployment %}
+      Saved to your account.
+      {% elif user %}
+      Saved to your account.
+      {% else %}
+      Saved locally to <code>.env</code>.
+      {% endif %}
+      {% if user %}
+      <a href="/dashboard" class="link">Back to dashboard</a>
+      {% else %}
+      You can now sign in with Facebook.
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if reason == "wrong_app" %}
+    <div class="alert alert-warning" style="margin-bottom: 1rem;">
+      The saved App ID belongs to a different Meta developer account.
+      Paste <strong>your</strong> App ID and App Secret below, save, then sign in.
+    </div>
+    {% elif configured and not user and not error %}
+    <div class="alert alert-info" style="margin-bottom: 1rem;">
+      <strong>Already configured.</strong> If this is your Meta app, scroll down and click <strong>Sign in with Facebook</strong>.
+      If you see “App not active”, replace the values below with <em>your</em> App ID and Secret.
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 class="panel-title" style="margin-bottom: 1rem;">
+        {% if user %}Credentials{% else %}Paste your credentials{% endif %}
+      </h2>
+
+      {% if discovered_apps and not user %}
+      <div class="alert alert-info text-sm" style="margin-bottom: 1rem;">
+        <strong>Found {{ discovered_apps|length }} app(s)</strong> on your Facebook account. Pick one to fill App ID.
+      </div>
+      {% endif %}
+
+      <form method="post" action="/setup/app" id="setup-form">
+        <input type="hidden" name="sign_in_after" id="sign_in_after" value="{% if user %}0{% else %}1{% endif %}">
+
+        {% if discovered_apps and not user %}
+        <div class="field">
+          <label class="label">Your Meta apps</label>
+          <select class="input" id="app-picker" onchange="pickApp(this.value)">
+            <option value="">Choose an app…</option>
+            {% for app in discovered_apps %}
+            <option value="{{ app.id }}" {% if app.current or app.id == current_app_id %}selected{% endif %}>
+              {{ app.name }} ({{ app.id }}){% if app.current %} — current{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <div class="field">
+          <label class="label" for="facebook_app_id">App ID</label>
+          <input
+            type="text"
+            id="facebook_app_id"
+            name="facebook_app_id"
+            class="input font-mono"
+            placeholder="123456789012345"
+            value="{{ current_app_id }}"
+            required
+            inputmode="numeric"
+            autocomplete="off"
+          >
+        </div>
+
+        <div class="field">
+          <label class="label" for="facebook_app_secret">App Secret</label>
+          <input
+            type="password"
+            id="facebook_app_secret"
+            name="facebook_app_secret"
+            class="input font-mono"
+            placeholder="{% if has_secret %}Leave blank to keep {{ masked_secret }}{% else %}Paste App Secret here{% endif %}"
+            autocomplete="new-password"
+          >
+          <p class="field-hint">
+            From App settings → Basic → App Secret (click Show).
+            {% if has_secret %}Leave blank only if App ID is unchanged.{% else %}Required.{% endif %}
+          </p>
+        </div>
+
+        <div class="alert alert-warning text-sm">
+          <strong>OAuth redirect URI</strong> (add to your Meta app if needed):
+          <code class="code-block">{{ redirect_uri }}</code>
+        </div>
+
+        <div class="gap-buttons" style="flex-wrap: wrap;">
+          {% if user %}
+          <button type="submit" class="btn btn-primary">Save</button>
+          <a href="/dashboard" class="btn btn-secondary">Cancel</a>
+          {% else %}
+          <button type="submit" class="btn btn-primary" onclick="document.getElementById('sign_in_after').value='1'">
+            Save &amp; sign in with Facebook
+          </button>
+          {% if configured %}
+          <button type="submit" class="btn btn-secondary" onclick="document.getElementById('sign_in_after').value='0'">
+            Save only
+          </button>
+          <a href="/auth/facebook/connect" class="btn btn-facebook">
+            Sign in with Facebook
+          </a>
+          {% endif %}
+          {% endif %}
+        </div>
+        {% if configured and not user %}
+        <p class="field-hint" style="margin-top: 0.75rem;">
+          Use <strong>Sign in with Facebook</strong> if the App ID above is already yours and saved.
+          Otherwise paste your credentials and click <strong>Save &amp; sign in</strong>.
+        </p>
+        {% endif %}
+      </form>
+    </div>
+  </main>
+</div>
+
+{% if discovered_apps and not user %}
+<script>
+function pickApp(appId) {
+  if (!appId) return;
+  document.getElementById('facebook_app_id').value = appId;
+}
+</script>
+{% endif %}
+{% endblock %}

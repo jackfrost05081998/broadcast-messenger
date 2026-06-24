@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}{{ page.name }} — Contacts{% endblock %}
+{% block body %}
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="breadcrumb">
+        <a href="/dashboard" class="breadcrumb-back">← Back</a>
+        <span class="breadcrumb-divider">|</span>
+        <span class="breadcrumb-current">{{ page.name }}</span>
+        <a href="/pages/{{ page.page_id }}/automation" class="header-link" style="margin-left: auto;">Automation →</a>
+      </div>
+      <span class="user-badge">{{ user.name }}</span>
+    </div>
+  </header>
+
+  <main class="page-main page-enter">
+    {% if form_error %}
+    <div class="alert alert-error">{{ form_error }}</div>
+    {% endif %}
+
+    <div class="alert alert-warning text-sm" style="margin-bottom: 1rem;">
+      <strong>Why some contacts fail:</strong> Meta blocks most old inquirer broadcasts until your app is approved for
+      <strong>Human Agent</strong> message tags.
+      <strong>Smart mode</strong> (default) still reaches anyone who messaged within 24 hours.
+      {% if recent_count %}<span class="badge badge-success" style="margin-left: 0.5rem;">~{{ recent_count }} likely within 24h</span>{% endif %}
+      <a href="/go-live" class="link" style="margin-left: 0.25rem;">App Review guide →</a>
+    </div>
+
+    <div class="alert alert-info text-sm" style="margin-bottom: 1rem;">
+      {% if synced_at %}
+      <strong>{{ contacts|length }} contacts</strong> · last synced {{ synced_at }}
+      {% if refreshed %}(just updated){% endif %}
+      · <a href="/pages/{{ page.page_id }}?refresh=1" class="link">Refresh from Facebook</a>
+      {% else %}
+      Loading contacts from Facebook…
+      {% endif %}
+    </div>
+
+    <form method="post" action="/pages/{{ page.page_id }}/broadcast" id="broadcast-form">
+      <div class="two-col">
+        <div class="card">
+          <div class="panel-header">
+            <h1 class="panel-title">Inquirers</h1>
+            <span class="panel-count">{{ contacts|length }}</span>
+          </div>
+
+          {% if contacts %}
+          <div class="gap-buttons" style="margin-bottom: 1rem;">
+            <button type="button" onclick="selectAll(true)" class="btn btn-secondary btn-sm">Select all</button>
+            <button type="button" onclick="selectAll(false)" class="btn btn-secondary btn-sm">Deselect all</button>
+          </div>
+
+          <div class="contacts-panel">
+            {% for contact in contacts %}
+            <label class="contact-row">
+              <input type="checkbox" name="recipient_psids" value="{{ contact.psid }}" class="contact-checkbox" checked>
+              <div class="contact-avatar">{{ contact.name[0] if contact.name else "?" }}</div>
+              <div class="contact-info">
+                <div class="contact-name">
+                  {{ contact.name }}
+                  {% if contact.within_24h %}<span class="badge badge-success" style="font-size: 0.65rem; margin-left: 0.35rem;">24h</span>{% endif %}
+                </div>
+                <div class="contact-meta">
+                  {{ contact.message_count }} messages
+                  {% if contact.updated_time %} · {{ contact.updated_time[:10] }}{% endif %}
+                </div>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="empty-state">
+            <p>No inquirers found. Make sure people have messaged your Page on Messenger.</p>
+            <a href="/pages/{{ page.page_id }}?refresh=1" class="btn btn-secondary btn-sm">Refresh</a>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="card broadcast-panel">
+          <h2 class="panel-title" style="margin-bottom: 0.5rem;">Broadcast</h2>
+          <p class="text-sm text-muted" style="margin: 0 0 1.25rem;">
+            Send one message to all selected inquirers — like Reply'em.
+          </p>
+
+          <div class="field">
+            <label class="label">Who to message</label>
+            <select name="broadcast_mode" class="input" onchange="toggleBroadcastMode(this.value)">
+              <option value="smart" selected>Smart (recommended) — tag + 24h fallback</option>
+              <option value="past_inquirers">All past inquirers (Message Tag only — needs App Review)</option>
+              <option value="recent">Recent only (within 24 hours)</option>
+            </select>
+            <p class="field-hint" id="mode-hint">
+              Tries Message Tag first, then automatically retries recent inquirers using the 24-hour window.
+            </p>
+          </div>
+
+          <div class="field">
+            <label class="label">Message</label>
+            <textarea name="message_text" rows="6" required class="input" placeholder="Write your broadcast message…"></textarea>
+            <p class="field-hint">Each contact receives <strong>Hi FirstName,</strong> before your message automatically.</p>
+          </div>
+
+          {% if follow_up_templates %}
+          <div class="field" style="padding: 1rem; background: var(--surface-2, #f8f9fa); border-radius: 8px;">
+            <label class="label" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <input type="checkbox" name="schedule_follow_up" value="1" id="schedule_follow_up"
+                {% if automation and automation.follow_up_enabled %}checked{% endif %}>
+              Schedule follow-up in {{ automation.follow_up_days if automation else 7 }} days
+            </label>
+            <select name="follow_up_template_id" class="input">
+              <option value="">— Choose follow-up template —</option>
+              {% for t in follow_up_templates %}
+              <option value="{{ t.id }}"
+                {% if automation and automation.follow_up_template_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+              {% endfor %}
+            </select>
+            <p class="field-hint" style="margin-top: 0.5rem;">
+              Sends only to contacts who received this broadcast successfully.
+              <a href="/pages/{{ page.page_id }}/automation" class="link">Manage templates →</a>
+            </p>
+          </div>
+          {% else %}
+          <p class="text-sm text-muted">
+            <a href="/pages/{{ page.page_id }}/automation" class="link">Create follow-up templates</a> to schedule a message one week later.
+          </p>
+          {% endif %}
+
+          <input type="hidden" name="messaging_type" id="messaging_type" value="MESSAGE_TAG">
+          <input type="hidden" name="message_tag" id="message_tag" value="HUMAN_AGENT">
+
+          <div class="field" id="tag-field">
+            <label class="label">Message tag (for past inquirers)</label>
+            <select class="input" id="tag-select" onchange="document.getElementById('message_tag').value=this.value">
+              <option value="HUMAN_AGENT" selected>Human Agent — follow-up on past inquiries</option>
+              <option value="ACCOUNT_UPDATE">Account Update</option>
+              <option value="CONFIRMED_EVENT_UPDATE">Confirmed Event Update</option>
+              <option value="POST_PURCHASE_UPDATE">Post-Purchase Update</option>
+            </select>
+            <p class="field-hint">Message content must match the tag per Meta policy.</p>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block" {% if not contacts %}disabled{% endif %}
+                  id="send-btn" onclick="return confirmSend()">
+            Send broadcast
+          </button>
+        </div>
+      </div>
+    </form>
+  </main>
+</div>
+
+<script>
+function selectAll(checked) {
+  document.querySelectorAll('.contact-checkbox').forEach(cb => cb.checked = checked);
+}
+function toggleBroadcastMode(mode) {
+  const tagField = document.getElementById('tag-field');
+  const hint = document.getElementById('mode-hint');
+  const msgType = document.getElementById('messaging_type');
+  if (mode === 'recent') {
+    msgType.value = 'RESPONSE';
+    tagField.style.display = 'none';
+    hint.textContent = 'Only works if they messaged your Page within the last 24 hours.';
+  } else if (mode === 'past_inquirers') {
+    msgType.value = 'MESSAGE_TAG';
+    tagField.style.display = 'block';
+    hint.textContent = 'Message Tag only. Requires Human Agent approval in Meta App Review for old inquirers.';
+  } else {
+    msgType.value = 'MESSAGE_TAG';
+    tagField.style.display = 'block';
+    hint.textContent = 'Tries Message Tag first, then automatically retries recent inquirers using the 24-hour window.';
+  }
+}
+function confirmSend() {
+  const n = document.querySelectorAll('.contact-checkbox:checked').length;
+  const mode = document.querySelector('[name=broadcast_mode]').value;
+  const label = mode === 'recent'
+    ? 'recent inquirers (24h)'
+    : mode === 'past_inquirers'
+      ? 'all selected past inquirers (Message Tag)'
+      : 'selected inquirers (Smart mode)';
+  return confirm(`Send this message to ${n} ${label}?`);
+}
+toggleBroadcastMode(document.querySelector('[name=broadcast_mode]').value);
+</script>
+{% endblock %}
