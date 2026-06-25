@@ -61,6 +61,7 @@ class Settings:
         self.webhook_verify_token = os.getenv(
             "WEBHOOK_VERIFY_TOKEN", self.secret_key[:32]
         )
+        self.max_page_contacts = int(os.getenv("MAX_PAGE_CONTACTS", "5000"))
 
     @property
     def facebook_configured(self) -> bool:

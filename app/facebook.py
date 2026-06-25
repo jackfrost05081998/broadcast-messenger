@@ -177,36 +177,65 @@ class FacebookService:
         return data.get("data", [])
 
     async def get_page_conversations(
-        self, page_id: str, page_access_token: str, limit: int = 100
+        self, page_id: str, page_access_token: str, limit: int | None = None
     ) -> List[Dict[str, Any]]:
+        settings = get_settings()
+        max_total = min(limit or settings.max_page_contacts, settings.max_page_contacts)
+        page_size = min(100, max_total)  # Meta max per request
+        fields = "id,updated_time,message_count,participants"
         conversations: List[Dict[str, Any]] = []
         seen_ids: set[str] = set()
 
-        # Try Messenger first, then without platform filter
         for platform in ("MESSENGER", None):
-            params: Dict[str, Any] = {
-                "fields": "id,updated_time,message_count,participants",
-                "limit": min(limit, 100),
+            url: str | None = f"{self.api_base}/{page_id}/conversations"
+            params: Dict[str, Any] | None = {
+                "fields": fields,
+                "limit": page_size,
                 "access_token": page_access_token,
             }
             if platform:
                 params["platform"] = platform
 
-            url = f"{self.api_base}/{page_id}/conversations"
             try:
-                while url and len(conversations) < limit:
+                while url and len(conversations) < max_total:
                     data = await self._get_url(
-                        url, params if "graph.facebook.com" in url else None
+                        url,
+                        params if params is not None else None,
                     )
-                    for conv in data.get("data", []):
+                    params = None
+
+                    batch = data.get("data", [])
+                    for conv in batch:
                         cid = conv.get("id")
                         if cid and cid not in seen_ids:
                             seen_ids.add(cid)
                             conversations.append(conv)
-                        if len(conversations) >= limit:
+                        if len(conversations) >= max_total:
                             break
-                    url = data.get("paging", {}).get("next")
-                    params = {}
+
+                    if len(conversations) >= max_total:
+                        break
+
+                    paging = data.get("paging") or {}
+                    url = paging.get("next")
+                    if url:
+                        continue
+
+                    cursors = paging.get("cursors") or {}
+                    after = cursors.get("after")
+                    if after and len(batch) >= page_size:
+                        url = f"{self.api_base}/{page_id}/conversations"
+                        params = {
+                            "fields": fields,
+                            "limit": page_size,
+                            "access_token": page_access_token,
+                            "after": after,
+                        }
+                        if platform:
+                            params["platform"] = platform
+                    else:
+                        break
+
                 if conversations:
                     break
             except FacebookAPIError as exc:
@@ -216,7 +245,7 @@ class FacebookService:
         return conversations
 
     async def get_contacts_for_page(
-        self, page_id: str, page_access_token: str, limit: int = 2000
+        self, page_id: str, page_access_token: str, limit: int | None = None
     ) -> List[Dict[str, Any]]:
         conversations = await self.get_page_conversations(page_id, page_access_token, limit)
         return extract_contacts_fast(conversations, page_id)

@@ -32,6 +32,7 @@
       <strong>{{ contacts|length }} contacts</strong> · last synced {{ synced_at }}
       {% if refreshed %}(just updated){% endif %}
       · <a href="/pages/{{ page.page_id }}?refresh=1" class="link">Refresh from Facebook</a>
+      (loads up to 5,000 past inquirers)
       {% else %}
       Loading contacts from Facebook…
       {% endif %}

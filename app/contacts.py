@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contact_utils import extract_contacts_fast
+from app.config import get_settings
 from app.facebook import FacebookAPIError, facebook_service
 from app.models import PageContact
 
@@ -68,10 +69,11 @@ async def sync_page_contacts(
     user_id: int,
     page_id: str,
     page_access_token: str,
-    limit: int = 2000,
+    limit: int | None = None,
 ) -> List[Dict[str, Any]]:
+    fetch_limit = limit or get_settings().max_page_contacts
     conversations = await facebook_service.get_page_conversations(
-        page_id, page_access_token, limit=limit
+        page_id, page_access_token, limit=fetch_limit
     )
     contacts = extract_contacts_fast(conversations, page_id)
     await save_contacts_cache(db, user_id, page_id, contacts)
