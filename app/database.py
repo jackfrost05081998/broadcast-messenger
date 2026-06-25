@@ -43,11 +43,32 @@ def _ensure_page_contact_auto_reply_columns(connection) -> None:
         connection.execute(text("ALTER TABLE page_contacts ADD COLUMN auto_reply_sent_at TIMESTAMP"))
 
 
+def _ensure_facebook_page_picture_url_text(connection) -> None:
+    inspector = inspect(connection)
+    if "facebook_pages" not in inspector.get_table_names():
+        return
+    for column in inspector.get_columns("facebook_pages"):
+        if column["name"] != "picture_url":
+            continue
+        col_type = str(column["type"]).lower()
+        if "512" in col_type or col_type in ("varchar", "character varying"):
+            dialect = connection.dialect.name
+            if dialect == "postgresql":
+                connection.execute(
+                    text("ALTER TABLE facebook_pages ALTER COLUMN picture_url TYPE TEXT")
+                )
+            elif dialect == "sqlite":
+                # SQLite stores URLs in TEXT already for new installs; skip if already text-like.
+                pass
+        break
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_user_meta_columns)
         await conn.run_sync(_ensure_page_contact_auto_reply_columns)
+        await conn.run_sync(_ensure_facebook_page_picture_url_text)
 
 
 async def get_db():

@@ -63,7 +63,7 @@ class FacebookPage(Base):
     page_id = Column(String(64), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     access_token = Column(Text, nullable=False)
-    picture_url = Column(String(512), nullable=True)
+    picture_url = Column(Text, nullable=True)
     category = Column(String(255), nullable=True)
     connected_at = Column(DateTime, default=datetime.utcnow)
 
