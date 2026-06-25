@@ -20,7 +20,7 @@
 
     <div class="page-heading">
       <h1>Automation — {{ page.name }}</h1>
-      <p>Templates and automation rules are saved permanently for this Page — they stay after you log out or reconnect Facebook.</p>
+      <p>Templates are personalized automatically: <strong>Hi <em>First name</em>,</strong> then your message.</p>
     </div>
 
     <div class="two-col">
@@ -107,7 +107,7 @@
           </div>
 
           <div class="field">
-            <label class="label" for="follow_up_template_id">Follow-up template</label>
+            <label class="label" for="follow_up_template_id">Default follow-up template</label>
             <select id="follow_up_template_id" name="follow_up_template_id" class="input">
               <option value="">— Select —</option>
               {% for t in follow_up_templates %}
@@ -123,17 +123,7 @@
               <input type="checkbox" name="reply_enabled" value="1" {% if automation.reply_enabled %}checked{% endif %}>
               Auto-reply when an inquirer messages your Page
             </label>
-            <p class="field-hint">Requires Messenger webhook setup in your Meta app (see below). Auto-reply sends once per conversation session. A new session starts after the cooldown below.</p>
-          </div>
-
-          <div class="field">
-            <label class="label" for="reply_cooldown_hours">Auto-reply session cooldown (hours)</label>
-            <select id="reply_cooldown_hours" name="reply_cooldown_hours" class="input">
-              {% for h in [6, 12, 24, 48, 72] %}
-              <option value="{{ h }}" {% if (automation.reply_cooldown_hours or 24) == h %}selected{% endif %}>{{ h }} hours</option>
-              {% endfor %}
-            </select>
-            <p class="field-hint">After this many hours without a message, the next inbound message starts a new session and can receive another auto-reply.</p>
+            <p class="field-hint">Requires Messenger webhook setup in your Meta app (see below). Auto-reply sends once per conversation — not on follow-up messages within 24 hours, or on messages sent more than 24 hours after the first.</p>
           </div>
 
           <div class="field">

@@ -24,15 +24,7 @@ from app.facebook import (
     should_retry_as_standard_reply,
 )
 from app.messages import personalize_message
-from app.models import (
-    Broadcast,
-    BroadcastRecipient,
-    FacebookPage,
-    MessageTemplate,
-    PageAutomation,
-    PageContact,
-    User,
-)
+from app.models import Broadcast, BroadcastRecipient, FacebookPage, MessageTemplate, PageAutomation, PageContact, User
 from app.scheduler import schedule_follow_ups
 
 logger = logging.getLogger(__name__)
@@ -193,11 +185,7 @@ async def page_contacts(
 
     tpl_result = await db.execute(
         select(MessageTemplate)
-        .where(
-            MessageTemplate.user_id == user.id,
-            MessageTemplate.page_id == page_id,
-            MessageTemplate.kind == "follow_up",
-        )
+        .where(MessageTemplate.user_id == user.id, MessageTemplate.kind == "follow_up")
         .order_by(MessageTemplate.name)
     )
     follow_up_templates = tpl_result.scalars().all()
@@ -331,7 +319,6 @@ async def broadcast_message(
                 select(MessageTemplate).where(
                     MessageTemplate.id == int(follow_up_template_id),
                     MessageTemplate.user_id == user.id,
-                    MessageTemplate.page_id == page.page_id,
                 )
             )
             tpl = tpl_result.scalar_one_or_none()

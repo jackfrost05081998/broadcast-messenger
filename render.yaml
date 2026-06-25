@@ -1,9 +1,5 @@
 # Render Blueprint — free web tier (no credit card).
 # Facebook App ID/Secret are NOT required here: each user pastes their own on sign-in.
-#
-# REQUIRED: Neon PostgreSQL (free tier at https://neon.tech)
-# 1. Create a Neon project → copy the connection string (postgresql://...neon.tech/...?sslmode=require)
-# 2. Paste it as DATABASE_URL when deploying this blueprint (or in Render → Environment)
 services:
   - type: web
     name: broadcast-messenger

@@ -124,13 +124,9 @@ class BroadcastRecipient(Base):
 
 class MessageTemplate(Base):
     __tablename__ = "message_templates"
-    __table_args__ = (
-        UniqueConstraint("user_id", "page_id", "name", "kind", name="uq_user_page_template"),
-    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    page_id = Column(String(64), nullable=False, index=True)
     name = Column(String(128), nullable=False)
     body = Column(Text, nullable=False)
     kind = Column(String(32), nullable=False, default="general")  # follow_up, reply, general
@@ -148,39 +144,14 @@ class PageAutomation(Base):
     page_id = Column(String(64), nullable=False, index=True)
     follow_up_enabled = Column(Boolean, default=False)
     follow_up_days = Column(Integer, default=7)
-    follow_up_template_id = Column(
-        Integer, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True
-    )
+    follow_up_template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
     reply_enabled = Column(Boolean, default=False)
-    reply_template_id = Column(
-        Integer, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True
-    )
-    reply_cooldown_hours = Column(Integer, default=24)
+    reply_template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="page_automations")
     follow_up_template = relationship("MessageTemplate", foreign_keys=[follow_up_template_id])
     reply_template = relationship("MessageTemplate", foreign_keys=[reply_template_id])
-
-
-class FollowUpScheduleStep(Base):
-    """One follow-up message scheduled N days after a broadcast."""
-
-    __tablename__ = "follow_up_schedule_steps"
-    __table_args__ = (
-        UniqueConstraint("user_id", "page_id", "delay_days", name="uq_follow_up_step_delay"),
-    )
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    page_id = Column(String(64), nullable=False, index=True)
-    delay_days = Column(Integer, nullable=False)
-    template_id = Column(
-        Integer, ForeignKey("message_templates.id", ondelete="CASCADE"), nullable=False
-    )
-    sort_order = Column(Integer, default=0)
-
-    template = relationship("MessageTemplate")
 
 
 class ScheduledFollowUp(Base):

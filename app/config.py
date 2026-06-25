@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from dotenv import load_dotenv
 
-from app.db_url import is_postgres_url, normalize_database_url
+from app.db_url import normalize_database_url
 from app.env_store import reload_env
 
 load_dotenv()
@@ -49,20 +49,15 @@ class Settings:
             or "http://localhost:8000"
         ).rstrip("/")
         self.port = int(os.getenv("PORT", "8000"))
-        raw_db_url = os.getenv("DATABASE_URL", "").strip()
-        if is_cloud_deployment():
-            if not raw_db_url:
-                raw_db_url = ""
-            elif not is_postgres_url(raw_db_url):
-                raw_db_url = ""
-        elif not raw_db_url:
-            raw_db_url = "sqlite+aiosqlite:///./broadcast_messenger.db"
-        self.database_url = normalize_database_url(raw_db_url) if raw_db_url else ""
+        raw_db_url = os.getenv(
+            "DATABASE_URL", "sqlite+aiosqlite:///./broadcast_messenger.db"
+        )
+        self.database_url = normalize_database_url(raw_db_url)
         self.facebook_app_id = os.getenv("FACEBOOK_APP_ID", "").strip()
         self.facebook_app_secret = os.getenv("FACEBOOK_APP_SECRET", "").strip()
         self.facebook_api_version = os.getenv("FACEBOOK_API_VERSION", "v21.0")
         self.session_cookie_name = "session_token"
-        self.session_max_age = 60 * 60 * 24 * 30
+        self.session_max_age = 60 * 60 * 24 * 7
         self.webhook_verify_token = os.getenv(
             "WEBHOOK_VERIFY_TOKEN", self.secret_key[:32]
         )
@@ -88,27 +83,6 @@ class Settings:
             return (
                 "FACEBOOK_APP_SECRET in .env is not set. "
                 "Copy the real secret from App Settings → Basic on developers.facebook.com."
-            )
-        return None
-
-    @property
-    def uses_postgres(self) -> bool:
-        return bool(self.database_url) and is_postgres_url(self.database_url)
-
-    @property
-    def database_config_error(self) -> str | None:
-        if not is_cloud_deployment():
-            return None
-        raw = os.getenv("DATABASE_URL", "").strip()
-        if not raw:
-            return (
-                "DATABASE_URL is not set on Render. Create a free database at neon.tech, "
-                "copy the connection string, and add it under Render → Environment → DATABASE_URL."
-            )
-        if not is_postgres_url(raw):
-            return (
-                "DATABASE_URL must be a Neon PostgreSQL URL (postgresql://...@....neon.tech/...). "
-                "SQLite does not persist on Render — templates and automation would be lost on restart."
             )
         return None
 

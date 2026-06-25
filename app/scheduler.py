@@ -28,45 +28,24 @@ async def schedule_follow_ups(
     source_broadcast_id: int | None,
 ) -> int:
     """Queue one follow-up per recipient after N days."""
-    return await schedule_follow_up_steps(
-        user_id=user_id,
-        page_id=page_id,
-        recipients=recipients,
-        steps=[(follow_up_days, template_id, template_body.strip())],
-        source_broadcast_id=source_broadcast_id,
-    )
-
-
-async def schedule_follow_up_steps(
-    *,
-    user_id: int,
-    page_id: str,
-    recipients: list[tuple[str, str | None]],
-    steps: list[tuple[int, int | None, str]],
-    source_broadcast_id: int | None,
-) -> int:
-    """Queue one or more follow-ups per recipient (each step = days after broadcast)."""
-    now = datetime.utcnow()
+    scheduled_at = datetime.utcnow() + timedelta(days=follow_up_days)
     count = 0
     async with async_session() as db:
         for psid, name in recipients:
-            for delay_days, template_id, template_body in steps:
-                if not template_body.strip():
-                    continue
-                db.add(
-                    ScheduledFollowUp(
-                        user_id=user_id,
-                        page_id=page_id,
-                        recipient_psid=psid,
-                        recipient_name=name,
-                        template_id=template_id,
-                        message_text=template_body.strip(),
-                        scheduled_at=now + timedelta(days=delay_days),
-                        status="pending",
-                        source_broadcast_id=source_broadcast_id,
-                    )
+            db.add(
+                ScheduledFollowUp(
+                    user_id=user_id,
+                    page_id=page_id,
+                    recipient_psid=psid,
+                    recipient_name=name,
+                    template_id=template_id,
+                    message_text=template_body.strip(),
+                    scheduled_at=scheduled_at,
+                    status="pending",
+                    source_broadcast_id=source_broadcast_id,
                 )
-                count += 1
+            )
+            count += 1
         await db.commit()
     return count
 

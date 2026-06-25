@@ -51,20 +51,16 @@ def _event_inbound_at(event: dict) -> datetime:
     return datetime.utcnow()
 
 
-def _should_send_auto_reply(
-    contact: PageContact | None, inbound_at: datetime, cooldown_hours: int
-) -> bool:
-    """Auto-reply once per conversation session.
+def _should_send_auto_reply(contact: PageContact | None, inbound_at: datetime) -> bool:
+    """Only auto-reply to the first inbound message in a session.
 
-    A new session starts when the gap since the last inbound message is at least
-    cooldown_hours. Follow-up messages in the same session are skipped.
+    Skip follow-ups within 24 hours, and skip re-engagement messages that arrive
+    more than 24 hours after the previous inbound (no repeat auto-reply).
     """
     if not contact or not contact.last_inbound_at:
         return True
     gap = inbound_at - contact.last_inbound_at
-    if gap >= timedelta(hours=cooldown_hours):
-        return True
-    return not contact.auto_reply_sent_at
+    return gap < timedelta(hours=24) and not contact.auto_reply_sent_at
 
 
 @router.get("/messenger")
@@ -152,7 +148,6 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             continue
 
         template_body = automation.reply_template.body
-        cooldown_hours = max(1, min(automation.reply_cooldown_hours or 24, 168))
         events = entry.get("messaging", [])
         logger.warning(
             "Auto-reply processing %s event(s) for page %s (reply_enabled=true)",
@@ -181,20 +176,24 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             )
             contact = contact_result.scalar_one_or_none()
 
-            if not _should_send_auto_reply(contact, inbound_at, cooldown_hours):
+            if not _should_send_auto_reply(contact, inbound_at):
                 if contact:
-                    logger.warning(
-                        "Skipping auto-reply — already sent in this %sh session for psid %s",
-                        cooldown_hours,
-                        sender_psid,
-                    )
+                    if contact.last_inbound_at and inbound_at - contact.last_inbound_at >= timedelta(
+                        hours=24
+                    ):
+                        logger.warning(
+                            "Skipping auto-reply — follow-up after 24h for psid %s on page %s",
+                            sender_psid,
+                            page_id,
+                        )
+                    else:
+                        logger.warning(
+                            "Skipping auto-reply — not first message in session for psid %s on page %s",
+                            sender_psid,
+                            page_id,
+                        )
                     contact.last_inbound_at = inbound_at
                 continue
-
-            if contact and contact.last_inbound_at:
-                gap = inbound_at - contact.last_inbound_at
-                if gap >= timedelta(hours=cooldown_hours):
-                    contact.auto_reply_sent_at = None
 
             recipient_name = contact.name if contact else None
             text = personalize_message(recipient_name, template_body)

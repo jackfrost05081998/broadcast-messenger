@@ -7,8 +7,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.config import get_settings, is_cloud_deployment
-from app.database import check_database_connection, init_db
+from app.config import get_settings
+from app.database import init_db
 from app.dependencies import get_optional_user
 from app.models import User
 from app.routes.auth_routes import facebook_router, router as auth_router
@@ -35,10 +35,6 @@ _configure_logging()
 
 @asynccontextmanager
 async def lifespan(app):
-    if settings.uses_postgres:
-        logger.info("Database: Neon PostgreSQL (persistent storage enabled)")
-    elif is_cloud_deployment():
-        logger.error("DATABASE_URL must be set to Neon PostgreSQL on Render")
     await init_db()
     try:
         await process_due_follow_ups()
@@ -58,21 +54,11 @@ def create_app():
 
     @app.get("/health")
     async def health():
-        db_ok = False
-        try:
-            db_ok = await check_database_connection()
-        except Exception:
-            logger.exception("Database health check failed")
         try:
             await process_due_follow_ups()
         except Exception:
             logger.exception("Follow-up check during health failed")
-        payload = {
-            "status": "ok" if db_ok else "degraded",
-            "database": "connected" if db_ok else "unavailable",
-            "storage": "neon_postgres" if settings.uses_postgres else "sqlite",
-        }
-        return JSONResponse(payload, status_code=200 if db_ok else 503)
+        return JSONResponse({"status": "ok"})
 
     @app.get("/internal/process-followups")
     async def cron_process_followups(key: str = ""):
