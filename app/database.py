@@ -95,6 +95,18 @@ async def init_db():
         await conn.run_sync(_ensure_user_meta_columns)
         await conn.run_sync(_ensure_page_contact_auto_reply_columns)
         await conn.run_sync(_ensure_message_template_page_id)
+        await conn.run_sync(_ensure_page_automation_reply_cooldown)
+
+
+def _ensure_page_automation_reply_cooldown(connection) -> None:
+    inspector = inspect(connection)
+    if "page_automations" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("page_automations")}
+    if "reply_cooldown_hours" not in columns:
+        connection.execute(
+            text("ALTER TABLE page_automations ADD COLUMN reply_cooldown_hours INTEGER DEFAULT 24")
+        )
 
 
 async def get_db():

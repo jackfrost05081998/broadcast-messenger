@@ -12,7 +12,13 @@ from app.database import get_db
 from app.dependencies import get_optional_user
 from app.facebook import facebook_service
 from app.meta_app import credentials_from_user
-from app.models import FacebookPage, MessageTemplate, PageAutomation, User
+from app.models import (
+    FacebookPage,
+    FollowUpScheduleStep,
+    MessageTemplate,
+    PageAutomation,
+    User,
+)
 
 router = APIRouter(tags=["automation"])
 templates = Jinja2Templates(directory="app/templates")
@@ -65,6 +71,21 @@ async def _get_page_template(
     return result.scalar_one_or_none()
 
 
+async def _get_follow_up_steps(
+    user_id: int, page_id: str, db: AsyncSession
+) -> list[FollowUpScheduleStep]:
+    result = await db.execute(
+        select(FollowUpScheduleStep)
+        .options(selectinload(FollowUpScheduleStep.template))
+        .where(
+            FollowUpScheduleStep.user_id == user_id,
+            FollowUpScheduleStep.page_id == page_id,
+        )
+        .order_by(FollowUpScheduleStep.delay_days, FollowUpScheduleStep.sort_order)
+    )
+    return result.scalars().all()
+
+
 async def _get_or_create_automation(
     user_id: int, page_id: str, db: AsyncSession
 ) -> PageAutomation:
@@ -105,6 +126,7 @@ async def page_automation(
     await db.commit()
 
     follow_up_templates, reply_templates = await _get_page_templates(user.id, page_id, db)
+    follow_up_steps = await _get_follow_up_steps(user.id, page_id, db)
 
     saved = request.query_params.get("saved") == "1"
     webhook_status = None
@@ -122,6 +144,7 @@ async def page_automation(
             "automation": automation,
             "follow_up_templates": follow_up_templates,
             "reply_templates": reply_templates,
+            "follow_up_steps": follow_up_steps,
             "webhook_url": f"{settings.app_url}/webhook/messenger",
             "webhook_verify_token": settings.webhook_verify_token,
             "webhook_status": webhook_status,
@@ -138,6 +161,7 @@ async def save_page_automation(
     follow_up_template_id: str = Form(""),
     reply_enabled: str = Form(""),
     reply_template_id: str = Form(""),
+    reply_cooldown_hours: int = Form(24),
     user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -164,6 +188,7 @@ async def save_page_automation(
             automation.follow_up_template_id = follow_tpl.id
 
     automation.reply_enabled = reply_enabled == "1"
+    automation.reply_cooldown_hours = max(1, min(reply_cooldown_hours, 168))
     if reply_template_id.strip():
         reply_tpl = await _get_page_template(
             user.id, page_id, int(reply_template_id), db
@@ -247,3 +272,73 @@ async def delete_template(
 
     redirect = f"/pages/{page_id}/automation" if page_id else "/dashboard"
     return RedirectResponse(redirect, status_code=302)
+
+
+@router.post("/pages/{page_id}/automation/follow-up-step")
+async def add_follow_up_step(
+    page_id: str,
+    delay_days: int = Form(...),
+    template_id: int = Form(...),
+    user: User | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    auth = _require_user(user)
+    if not isinstance(auth, User):
+        return auth
+    user = auth
+
+    page = await _get_page(user.id, page_id, db)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    tpl = await _get_page_template(user.id, page_id, template_id, db)
+    if not tpl or tpl.kind != "follow_up":
+        return RedirectResponse(
+            f"/pages/{page_id}/automation?error=invalid_template", status_code=302
+        )
+
+    days = max(1, min(delay_days, 90))
+    existing = await _get_follow_up_steps(user.id, page_id, db)
+    if any(s.delay_days == days for s in existing):
+        return RedirectResponse(
+            f"/pages/{page_id}/automation?error=duplicate_step", status_code=302
+        )
+
+    db.add(
+        FollowUpScheduleStep(
+            user_id=user.id,
+            page_id=page_id,
+            delay_days=days,
+            template_id=tpl.id,
+            sort_order=len(existing),
+        )
+    )
+    await db.commit()
+    return RedirectResponse(f"/pages/{page_id}/automation?saved=1", status_code=302)
+
+
+@router.post("/pages/{page_id}/automation/follow-up-step/{step_id}/delete")
+async def delete_follow_up_step(
+    page_id: str,
+    step_id: int,
+    user: User | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    auth = _require_user(user)
+    if not isinstance(auth, User):
+        return auth
+    user = auth
+
+    result = await db.execute(
+        select(FollowUpScheduleStep).where(
+            FollowUpScheduleStep.id == step_id,
+            FollowUpScheduleStep.user_id == user.id,
+            FollowUpScheduleStep.page_id == page_id,
+        )
+    )
+    step = result.scalar_one_or_none()
+    if step:
+        await db.delete(step)
+        await db.commit()
+
+    return RedirectResponse(f"/pages/{page_id}/automation?saved=1", status_code=302)

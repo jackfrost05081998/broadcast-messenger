@@ -106,8 +106,17 @@
             <label class="label" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
               <input type="checkbox" name="schedule_follow_up" value="1" id="schedule_follow_up"
                 {% if automation and automation.follow_up_enabled %}checked{% endif %}>
-              Schedule follow-up in {{ automation.follow_up_days if automation else 7 }} days
+              Schedule follow-up after broadcast
             </label>
+            {% if follow_up_steps %}
+            <p class="text-sm" style="margin: 0 0 0.5rem;">
+              <strong>Scheduled steps:</strong>
+              {% for step in follow_up_steps %}
+              Day {{ step.delay_days }} ({{ step.template.name if step.template else '?' }}){% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </p>
+            <input type="hidden" name="follow_up_template_id" value="">
+            {% else %}
             <select name="follow_up_template_id" class="input">
               <option value="">— Choose follow-up template —</option>
               {% for t in follow_up_templates %}
@@ -115,9 +124,14 @@
                 {% if automation and automation.follow_up_template_id == t.id %}selected{% endif %}>{{ t.name }}</option>
               {% endfor %}
             </select>
+            <p class="field-hint" style="margin-top: 0.35rem;">
+              Single follow-up in {{ automation.follow_up_days if automation else 7 }} days, or configure a
+              <a href="/pages/{{ page.page_id }}/automation" class="link">multi-step schedule</a>.
+            </p>
+            {% endif %}
             <p class="field-hint" style="margin-top: 0.5rem;">
               Sends only to contacts who received this broadcast successfully.
-              <a href="/pages/{{ page.page_id }}/automation" class="link">Manage templates →</a>
+              <a href="/pages/{{ page.page_id }}/automation" class="link">Manage automation →</a>
             </p>
           </div>
           {% else %}

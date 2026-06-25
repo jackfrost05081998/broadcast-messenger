@@ -155,11 +155,32 @@ class PageAutomation(Base):
     reply_template_id = Column(
         Integer, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True
     )
+    reply_cooldown_hours = Column(Integer, default=24)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="page_automations")
     follow_up_template = relationship("MessageTemplate", foreign_keys=[follow_up_template_id])
     reply_template = relationship("MessageTemplate", foreign_keys=[reply_template_id])
+
+
+class FollowUpScheduleStep(Base):
+    """One follow-up message scheduled N days after a broadcast."""
+
+    __tablename__ = "follow_up_schedule_steps"
+    __table_args__ = (
+        UniqueConstraint("user_id", "page_id", "delay_days", name="uq_follow_up_step_delay"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    page_id = Column(String(64), nullable=False, index=True)
+    delay_days = Column(Integer, nullable=False)
+    template_id = Column(
+        Integer, ForeignKey("message_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    sort_order = Column(Integer, default=0)
+
+    template = relationship("MessageTemplate")
 
 
 class ScheduledFollowUp(Base):
