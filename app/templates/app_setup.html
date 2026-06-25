@@ -45,7 +45,12 @@
       Facebook access was denied. Grant Page permissions when prompted after you sign in.
     </div>
     {% elif error == "invalid_oauth" %}
-    <div class="alert alert-error" style="margin-bottom: 1rem;">Sign-in was interrupted. Save your app credentials and try again.</div>
+    <div class="alert alert-error" style="margin-bottom: 1rem;">
+      Sign-in was interrupted.
+      {% if error_message %}{{ error_message }}{% else %}
+      Log out first if switching accounts. Paste <strong>your</strong> App ID and Secret, add the OAuth redirect URI below to <strong>your</strong> Meta app, then click <strong>Save &amp; sign in with Facebook</strong>.
+      {% endif %}
+    </div>
     {% elif error == "connection_failed" %}
     <div class="alert alert-error" style="margin-bottom: 1rem;">
       Could not complete Facebook sign-in.

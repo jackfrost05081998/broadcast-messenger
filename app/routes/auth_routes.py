@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token
-from app.config import get_settings
+from app.config import get_settings, is_valid_facebook_app_id
 from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
 from app.facebook import FacebookAPIError, FacebookConfigError, facebook_service
@@ -53,28 +53,35 @@ def _page_category(page: dict) -> str | None:
     return str(category)[:255]
 
 
-def _create_oauth_state(creds: MetaAppCredentials) -> str:
-    return _state_serializer.dumps(
-        {
-            "action": "login",
-            "app_id": creds.app_id,
-            "app_secret": creds.app_secret,
-        }
-    )
+def _create_oauth_state(app_id: str) -> str:
+    return _state_serializer.dumps({"action": "login", "app_id": app_id})
 
 
-def _credentials_from_oauth_state(state: str) -> MetaAppCredentials | None:
+def _app_id_from_oauth_state(state: str) -> str | None:
     try:
         data = _state_serializer.loads(state, max_age=OAUTH_STATE_MAX_AGE)
         if data.get("action") != "login":
             return None
-        creds = MetaAppCredentials(
-            str(data.get("app_id", "")).strip(),
-            str(data.get("app_secret", "")).strip(),
-        )
-        return creds if creds.configured else None
+        app_id = str(data.get("app_id", "")).strip()
+        return app_id if is_valid_facebook_app_id(app_id) else None
     except (BadSignature, SignatureExpired, KeyError, ValueError, TypeError):
         return None
+
+
+async def _credentials_for_callback(
+    request: Request, state: str
+) -> MetaAppCredentials | None:
+    """Match pending cookie to signed OAuth state (app_id only — keeps Facebook URL short)."""
+    state_app_id = _app_id_from_oauth_state(state)
+    if not state_app_id:
+        return None
+    pending = get_pending_meta_app(request)
+    if pending and pending.app_id == state_app_id:
+        return pending
+    creds = await resolve_meta_credentials(request, None)
+    if creds and creds.app_id == state_app_id:
+        return creds
+    return None
 
 
 def _set_session_cookie(response: RedirectResponse, user_id: int) -> RedirectResponse:
@@ -150,6 +157,7 @@ async def register_redirect():
 async def logout():
     redirect = RedirectResponse("/setup/app", status_code=302)
     redirect.delete_cookie(settings.session_cookie_name)
+    clear_pending_meta_app(redirect)
     return redirect
 
 
@@ -166,11 +174,10 @@ async def connect_facebook(
         return RedirectResponse("/setup/app", status_code=302)
 
     try:
-        state = _create_oauth_state(creds)
+        state = _create_oauth_state(creds.app_id)
         url = facebook_service.get_login_url(state, creds)
         response = RedirectResponse(url, status_code=302)
-        if not user:
-            set_pending_meta_app(response, creds.app_id, creds.app_secret)
+        set_pending_meta_app(response, creds.app_id, creds.app_secret)
         return response
     except FacebookConfigError:
         return RedirectResponse("/setup/app", status_code=302)
@@ -191,13 +198,25 @@ async def facebook_callback(
         return RedirectResponse(f"/setup/app?error={error}", status_code=302)
 
     if not code or not state:
-        return RedirectResponse("/setup/app?error=invalid_oauth", status_code=302)
+        return RedirectResponse(
+            "/setup/app?error=invalid_oauth&message="
+            + quote(
+                "Sign-in was interrupted. Log out, paste your App ID and Secret, "
+                "then use Save & sign in with Facebook."
+            ),
+            status_code=302,
+        )
 
-    creds = _credentials_from_oauth_state(state)
-    if not creds:
-        creds = await resolve_meta_credentials(request, None)
+    creds = await _credentials_for_callback(request, state)
     if not creds or not creds.configured:
-        return RedirectResponse("/setup/app?error=not_configured", status_code=302)
+        return RedirectResponse(
+            "/setup/app?error=invalid_oauth&message="
+            + quote(
+                "Session expired or wrong Meta app. Log out, re-paste App ID and Secret, "
+                "then click Save & sign in with Facebook."
+            ),
+            status_code=302,
+        )
 
     try:
         token_data = await facebook_service.exchange_code_for_token(code, creds)

@@ -8,13 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import (
     get_settings,
+    is_cloud_deployment,
     is_valid_facebook_app_id,
     is_valid_facebook_app_secret,
 )
 from app.models import User
 
 PENDING_COOKIE = "pending_meta_app"
-PENDING_MAX_AGE = 600
+PENDING_MAX_AGE = 1800
 
 
 @dataclass(frozen=True)
@@ -81,12 +82,11 @@ async def resolve_meta_credentials(
     request: Request,
     user: User | None,
 ) -> MetaAppCredentials | None:
-    """User DB record → pending sign-in cookie → platform .env (local fallback)."""
-    for source in (
-        credentials_from_user(user),
-        get_pending_meta_app(request),
-        credentials_from_env(),
-    ):
+    """User DB record → pending sign-in cookie → platform .env (local dev only)."""
+    sources = [credentials_from_user(user), get_pending_meta_app(request)]
+    if not is_cloud_deployment():
+        sources.append(credentials_from_env())
+    for source in sources:
         if source and source.configured:
             return source
     return None
