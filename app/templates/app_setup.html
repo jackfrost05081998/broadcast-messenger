@@ -70,7 +70,7 @@
       {% if user %}
       <a href="/dashboard" class="link">Back to dashboard</a>
       {% else %}
-      You can now sign in with Facebook.
+      Click <strong>Save &amp; sign in with Facebook</strong> to connect your account.
       {% endif %}
     </div>
     {% endif %}
@@ -82,9 +82,8 @@
     </div>
     {% elif configured and not user and not error %}
     <div class="alert alert-info" style="margin-bottom: 1rem;">
-      <strong>Welcome back on this browser.</strong> Your Meta app is remembered — click
-      <strong>Sign in with Facebook</strong> below. You do not need to re-enter App ID and Secret
-      unless you changed Meta apps.
+      <strong>Welcome back on this browser.</strong> Your App ID is filled in below. Leave App Secret blank if unchanged,
+      then click <strong>Save &amp; sign in with Facebook</strong>.
     </div>
     {% endif %}
 
@@ -157,25 +156,11 @@
           <button type="submit" class="btn btn-primary">Save</button>
           <a href="/dashboard" class="btn btn-secondary">Cancel</a>
           {% else %}
-          <button type="submit" class="btn btn-primary" onclick="document.getElementById('sign_in_after').value='1'">
+          <button type="submit" class="btn btn-primary btn-facebook">
             Save &amp; sign in with Facebook
           </button>
-          {% if configured %}
-          <button type="submit" class="btn btn-secondary" onclick="document.getElementById('sign_in_after').value='0'">
-            Save only
-          </button>
-          <a href="/auth/facebook/connect" class="btn btn-facebook">
-            Sign in with Facebook
-          </a>
-          {% endif %}
           {% endif %}
         </div>
-        {% if configured and not user %}
-        <p class="field-hint" style="margin-top: 0.75rem;">
-          Use <strong>Sign in with Facebook</strong> if the App ID above is already yours and saved.
-          Otherwise paste your credentials and click <strong>Save &amp; sign in</strong>.
-        </p>
-        {% endif %}
       </form>
     </div>
   </main>

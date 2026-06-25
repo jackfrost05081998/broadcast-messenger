@@ -18,6 +18,7 @@ from app.meta_app import (
     apply_user_meta_app,
     clear_pending_meta_app,
     clear_remember_meta_app,
+    get_pending_meta_app,
     resolve_meta_credentials,
     set_pending_meta_app,
     set_remember_meta_app,
@@ -130,6 +131,10 @@ async def connect_facebook(
 ):
     creds = await resolve_meta_credentials(request, user)
     if not creds or not creds.configured:
+        return RedirectResponse("/setup/app", status_code=302)
+
+    # Require a recent save so OAuth uses credentials from the form, not a stale cookie.
+    if not user and not get_pending_meta_app(request):
         return RedirectResponse("/setup/app", status_code=302)
 
     try:
