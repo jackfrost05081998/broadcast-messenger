@@ -65,12 +65,12 @@
           <span>
             {% if r.recipient_name %}{{ r.recipient_name }}{% else %}<span class="font-mono text-muted">{{ r.recipient_psid }}</span>{% endif %}
           </span>
-          {% if r.success %}
+          {% if r.success is none %}
+          <span class="status-pending">Pending</span>
+          {% elif r.success %}
           <span class="status-sent">Sent</span>
           {% else %}
-          <span class="status-failed">
-            Failed{% if r.error_message %} — {{ r.error_message }}{% endif %}
-          </span>
+          <span class="status-failed">Failed</span>
           {% endif %}
         </div>
         {% endfor %}

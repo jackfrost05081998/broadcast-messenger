@@ -1,39 +1,30 @@
 import asyncio
 import logging
-from datetime import datetime
 from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.broadcast_service import SendPage, run_broadcast_job, resolve_broadcast_type
 from app.config import get_settings
 from app.contact_utils import is_within_24h_window
 from app.contacts import get_page_contacts
-from app.database import async_session, get_db
+from app.database import get_db
 from app.dependencies import get_optional_user
 from app.meta_app import credentials_from_user
-from app.facebook import (
-    FacebookAPIError,
-    facebook_service,
-    normalize_recipient_psids,
-    should_retry_as_standard_reply,
-)
-from app.messages import personalize_message
+from app.facebook import FacebookAPIError, facebook_service, normalize_recipient_psids
 from app.models import Broadcast, BroadcastRecipient, FacebookPage, MessageTemplate, PageAutomation, PageContact, User
-from app.scheduler import schedule_follow_ups
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
-
-SEND_CONCURRENCY = 8
 
 
 def _require_user(user: User | None) -> User | RedirectResponse:
@@ -42,67 +33,17 @@ def _require_user(user: User | None) -> User | RedirectResponse:
     return user
 
 
-def _resolve_broadcast_type(broadcast_mode: str, messaging_type: str, message_tag: str) -> tuple[str, str]:
-    """Map UI mode to Meta messaging_type + tag."""
-    if broadcast_mode in ("past_inquirers", "smart"):
-        return "MESSAGE_TAG", message_tag or "HUMAN_AGENT"
-    if broadcast_mode == "recent":
-        return "RESPONSE", ""
-    if messaging_type == "MESSAGE_TAG":
-        return "MESSAGE_TAG", message_tag or "HUMAN_AGENT"
-    return "RESPONSE", ""
+def _wants_async_broadcast(request: Request) -> bool:
+    return request.headers.get("X-Broadcast-Async") == "1"
 
 
-async def _try_send(
-    page: FacebookPage,
-    psid: str,
-    message_text: str,
-    messaging_type: str,
-    message_tag: str | None,
-) -> tuple[bool, str | None]:
-    try:
-        await facebook_service.send_message(
-            page.page_id,
-            page.access_token,
-            psid,
-            message_text,
-            messaging_type=messaging_type,
-            tag=message_tag,
-        )
-        return True, None
-    except FacebookAPIError as e:
-        return False, e.user_hint[:500]
-    except Exception as e:
-        logger.exception("Send failed for psid %s", psid)
-        return False, str(e)[:500]
-
-
-async def _send_one(
-    page: FacebookPage,
-    psid: str,
-    message_text: str,
-    broadcast_mode: str,
-    messaging_type: str,
-    message_tag: str | None,
-    sem: asyncio.Semaphore,
-) -> tuple[bool, str | None]:
-    async with sem:
-        msg_type, tag = _resolve_broadcast_type(broadcast_mode, messaging_type, message_tag or "")
-
-        if broadcast_mode == "recent":
-            return await _try_send(page, psid, message_text, "RESPONSE", None)
-
-        ok, err = await _try_send(page, psid, message_text, msg_type, tag or None)
-        if ok:
-            return True, None
-
-        if broadcast_mode == "smart" and err and should_retry_as_standard_reply(err):
-            ok2, err2 = await _try_send(page, psid, message_text, "RESPONSE", None)
-            if ok2:
-                return True, None
-            return False, err2 or err
-
-        return False, err
+def _broadcast_error(request: Request, page_id: str, message: str, status: int = 400):
+    if _wants_async_broadcast(request):
+        return JSONResponse({"error": message}, status_code=status)
+    return RedirectResponse(
+        f"/pages/{page_id}?error=broadcast_failed&message={quote(message)}",
+        status_code=302,
+    )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -165,6 +106,7 @@ async def page_contacts(
     synced_at = None
     recent_count = 0
     force_refresh = request.query_params.get("refresh") == "1"
+    active_broadcast_id = request.query_params.get("broadcast_id")
 
     form_error = request.query_params.get("error")
     if form_error == "empty_message":
@@ -240,6 +182,19 @@ async def page_contacts(
         error = f"Unexpected error loading contacts: {e}"
         recent_count = 0
 
+    if not active_broadcast_id:
+        in_progress = await db.execute(
+            select(Broadcast.id)
+            .where(
+                Broadcast.user_id == user.id,
+                Broadcast.page_id == page_id,
+                Broadcast.status == "in_progress",
+            )
+            .order_by(Broadcast.created_at.desc())
+            .limit(1)
+        )
+        active_broadcast_id = in_progress.scalar_one_or_none()
+
     return templates.TemplateResponse(
         request,
         "page_contacts.html",
@@ -256,12 +211,14 @@ async def page_contacts(
             "synced_at": synced_at.strftime("%Y-%m-%d %H:%M") if synced_at else None,
             "automation": automation,
             "follow_up_templates": follow_up_templates,
+            "active_broadcast_id": active_broadcast_id,
         },
     )
 
 
 @router.post("/pages/{page_id}/broadcast")
 async def broadcast_message(
+    request: Request,
     page_id: str,
     message_text: str = Form(...),
     broadcast_mode: str = Form("smart"),
@@ -289,13 +246,27 @@ async def broadcast_message(
             raise HTTPException(status_code=404, detail="Page not found")
 
         psids = normalize_recipient_psids(recipient_psids)
-        msg_type, tag = _resolve_broadcast_type(broadcast_mode, messaging_type, message_tag)
+        msg_type, tag = resolve_broadcast_type(broadcast_mode, messaging_type, message_tag)
 
         if not message_text.strip():
-            return RedirectResponse(f"/pages/{page_id}?error=empty_message", status_code=302)
+            return _broadcast_error(request, page_id, "Please enter a message before sending.")
 
         if not psids:
-            return RedirectResponse(f"/pages/{page_id}?error=no_recipients", status_code=302)
+            return _broadcast_error(request, page_id, "Select at least one contact to message.")
+
+        in_progress = await db.execute(
+            select(Broadcast.id).where(
+                Broadcast.user_id == user.id,
+                Broadcast.page_id == page_id,
+                Broadcast.status == "in_progress",
+            )
+        )
+        if in_progress.scalar_one_or_none():
+            return _broadcast_error(
+                request,
+                page_id,
+                "A broadcast is already running. Wait for it to finish.",
+            )
 
         name_map: dict[str, str] = {}
         names_result = await db.execute(
@@ -316,8 +287,8 @@ async def broadcast_message(
 
         if should_schedule:
             if not follow_up_template_id.strip():
-                return RedirectResponse(
-                    f"/pages/{page_id}?error=no_follow_up_template", status_code=302
+                return _broadcast_error(
+                    request, page_id, "Choose a follow-up template or create one under Automation."
                 )
             tpl_result = await db.execute(
                 select(MessageTemplate).where(
@@ -328,8 +299,8 @@ async def broadcast_message(
             )
             tpl = tpl_result.scalar_one_or_none()
             if not tpl:
-                return RedirectResponse(
-                    f"/pages/{page_id}?error=no_follow_up_template", status_code=302
+                return _broadcast_error(
+                    request, page_id, "Choose a follow-up template or create one under Automation."
                 )
             follow_up_template_body = tpl.body
             follow_up_tpl_id = tpl.id
@@ -351,97 +322,102 @@ async def broadcast_message(
             messaging_type=msg_type,
             message_tag=tag if msg_type == "MESSAGE_TAG" else None,
             total_recipients=len(psids),
+            success_count=0,
+            failure_count=0,
             status="in_progress",
         )
         db.add(broadcast)
         await db.flush()
         broadcast_id = broadcast.id
-        # Commit before long Meta API sends so Neon does not close our idle connection.
+
+        for psid in psids:
+            db.add(
+                BroadcastRecipient(
+                    broadcast_id=broadcast_id,
+                    recipient_psid=psid,
+                    recipient_name=name_map.get(psid),
+                    success=None,
+                )
+            )
         await db.commit()
 
-        sem = asyncio.Semaphore(SEND_CONCURRENCY)
-        tasks = [
-            _send_one(
-                page,
-                psid,
-                personalize_message(name_map.get(psid), raw_message),
-                broadcast_mode,
-                msg_type,
-                tag or None,
-                sem,
-            )
-            for psid in psids
-        ]
-        results = await asyncio.gather(*tasks)
-
-        success_count = 0
-        failure_count = 0
-        successful_recipients: list[tuple[str, str | None]] = []
-        recipient_rows: list[dict] = []
-        for psid, (ok, err) in zip(psids, results):
-            recipient_rows.append(
-                {
-                    "broadcast_id": broadcast_id,
-                    "recipient_psid": psid,
-                    "recipient_name": name_map.get(psid),
-                    "success": ok,
-                    "error_message": err,
-                }
-            )
-            if ok:
-                success_count += 1
-                successful_recipients.append((psid, name_map.get(psid)))
-            else:
-                failure_count += 1
-
-        async def _persist_broadcast_results() -> None:
-            async with async_session() as save_db:
-                saved = await save_db.get(Broadcast, broadcast_id)
-                if not saved:
-                    raise RuntimeError(f"Broadcast {broadcast_id} not found")
-                for row in recipient_rows:
-                    save_db.add(BroadcastRecipient(**row))
-                saved.success_count = success_count
-                saved.failure_count = failure_count
-                saved.status = "completed"
-                saved.completed_at = datetime.utcnow()
-                await save_db.commit()
-
-        try:
-            await _persist_broadcast_results()
-        except Exception:
-            logger.exception(
-                "Broadcast save failed for id=%s, retrying with fresh connection",
-                broadcast_id,
-            )
-            await _persist_broadcast_results()
-
-        if should_schedule and follow_up_template_body and successful_recipients:
-            await schedule_follow_ups(
+        send_page = SendPage(page_id=page.page_id, access_token=page.access_token)
+        asyncio.create_task(
+            run_broadcast_job(
+                broadcast_id=broadcast_id,
+                page=send_page,
+                psids=psids,
+                name_map=name_map,
+                raw_message=raw_message,
+                broadcast_mode=broadcast_mode,
+                messaging_type=msg_type,
+                message_tag=tag or None,
+                schedule_follow_up=should_schedule,
+                follow_up_template_body=follow_up_template_body,
+                follow_up_tpl_id=follow_up_tpl_id,
+                follow_up_days=follow_up_days,
                 user_id=user.id,
                 page_id=page.page_id,
-                recipients=successful_recipients,
-                template_body=follow_up_template_body,
-                template_id=follow_up_tpl_id,
-                follow_up_days=follow_up_days,
-                source_broadcast_id=broadcast_id,
             )
+        )
 
-        return RedirectResponse(f"/broadcasts/{broadcast_id}", status_code=302)
+        if _wants_async_broadcast(request):
+            return JSONResponse({"broadcast_id": broadcast_id, "total": len(psids)})
+
+        return RedirectResponse(
+            f"/pages/{page_id}?broadcast_id={broadcast_id}",
+            status_code=302,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Broadcast failed for page %s", page_id)
+        logger.exception("Broadcast start failed for page %s", page_id)
         try:
             await db.rollback()
         except Exception:
             pass
-        msg = quote(str(e)[:200])
-        return RedirectResponse(
-            f"/pages/{page_id}?error=broadcast_failed&message={msg}",
-            status_code=302,
+        return _broadcast_error(request, page_id, str(e)[:200], status=500)
+
+
+@router.get("/broadcasts/{broadcast_id}/progress")
+async def broadcast_progress(
+    broadcast_id: int,
+    user: User | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    auth = _require_user(user)
+    if not isinstance(auth, User):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    user = auth
+
+    result = await db.execute(
+        select(Broadcast).where(
+            Broadcast.id == broadcast_id,
+            Broadcast.user_id == user.id,
         )
+    )
+    broadcast = result.scalar_one_or_none()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Broadcast not found")
+
+    recipients_result = await db.execute(
+        select(BroadcastRecipient).where(
+            BroadcastRecipient.broadcast_id == broadcast_id
+        )
+    )
+    recipients = recipients_result.scalars().all()
+
+    return JSONResponse(
+        {
+            "status": broadcast.status,
+            "total": broadcast.total_recipients,
+            "done": (broadcast.success_count or 0) + (broadcast.failure_count or 0),
+            "success_count": broadcast.success_count or 0,
+            "failure_count": broadcast.failure_count or 0,
+            "recipients": {r.recipient_psid: r.success for r in recipients},
+        }
+    )
 
 
 @router.get("/broadcasts/{broadcast_id}", response_class=HTMLResponse)

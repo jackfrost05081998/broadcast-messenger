@@ -90,6 +90,20 @@ def _ensure_message_template_page_id(connection) -> None:
         connection.execute(text("DELETE FROM message_templates WHERE page_id IS NULL"))
 
 
+def _ensure_broadcast_recipient_nullable_success(connection) -> None:
+    inspector = inspect(connection)
+    if "broadcast_recipients" not in inspector.get_table_names():
+        return
+    if connection.dialect.name != "postgresql":
+        return
+    for column in inspector.get_columns("broadcast_recipients"):
+        if column["name"] == "success" and not column.get("nullable", True):
+            connection.execute(
+                text("ALTER TABLE broadcast_recipients ALTER COLUMN success DROP NOT NULL")
+            )
+            break
+
+
 def _ensure_facebook_page_picture_url_text(connection) -> None:
     inspector = inspect(connection)
     if "facebook_pages" not in inspector.get_table_names():
@@ -116,6 +130,7 @@ async def init_db():
         await conn.run_sync(_ensure_user_meta_columns)
         await conn.run_sync(_ensure_page_contact_auto_reply_columns)
         await conn.run_sync(_ensure_message_template_page_id)
+        await conn.run_sync(_ensure_broadcast_recipient_nullable_success)
         await conn.run_sync(_ensure_facebook_page_picture_url_text)
 
 

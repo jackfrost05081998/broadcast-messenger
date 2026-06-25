@@ -116,7 +116,7 @@ class BroadcastRecipient(Base):
     broadcast_id = Column(Integer, ForeignKey("broadcasts.id"), nullable=False, index=True)
     recipient_psid = Column(String(64), nullable=False)
     recipient_name = Column(String(255), nullable=True)
-    success = Column(Boolean, default=False)
+    success = Column(Boolean, nullable=True)  # None=pending, True=sent, False=failed
     error_message = Column(Text, nullable=True)
 
     broadcast = relationship("Broadcast", back_populates="recipients")
