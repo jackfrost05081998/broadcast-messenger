@@ -2,15 +2,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from sqlalchemy import inspect, text
 
+from app.db_url import is_postgres_url
 from app.config import get_settings
 from app.models import Base
 
 settings = get_settings()
 
-connect_args = {}
-if settings.database_url.startswith("postgresql"):
-    if "neon.tech" in settings.database_url or "sslmode=require" in settings.database_url:
-        connect_args = {"ssl": "require"}
+connect_args: dict = {}
+if is_postgres_url(settings.database_url):
+    connect_args["ssl"] = "require"
 
 engine = create_async_engine(
     settings.database_url,

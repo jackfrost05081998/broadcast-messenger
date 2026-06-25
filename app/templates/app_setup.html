@@ -47,7 +47,10 @@
     {% elif error == "invalid_oauth" %}
     <div class="alert alert-error" style="margin-bottom: 1rem;">Sign-in was interrupted. Save your app credentials and try again.</div>
     {% elif error == "connection_failed" %}
-    <div class="alert alert-error" style="margin-bottom: 1rem;">Could not connect to Facebook. Check your App ID and Secret, then try again.</div>
+    <div class="alert alert-error" style="margin-bottom: 1rem;">
+      Could not complete Facebook sign-in.
+      {% if error_message %}{{ error_message }}{% else %}Use <strong>Save &amp; sign in with Facebook</strong> and re-paste your App ID and Secret.{% endif %}
+    </div>
     {% elif error == "facebook_api" and error_message %}
     <div class="alert alert-error" style="margin-bottom: 1rem;">{{ error_message }}</div>
     {% elif error == "invalid_app_id" %}
@@ -79,11 +82,6 @@
     <div class="alert alert-warning" style="margin-bottom: 1rem;">
       The saved App ID belongs to a different Meta developer account.
       Paste <strong>your</strong> App ID and App Secret below, save, then sign in.
-    </div>
-    {% elif configured and not user and not error %}
-    <div class="alert alert-info" style="margin-bottom: 1rem;">
-      <strong>Already configured.</strong> If this is your Meta app, scroll down and click <strong>Sign in with Facebook</strong>.
-      If you see “App not active”, replace the values below with <em>your</em> App ID and Secret.
     </div>
     {% endif %}
 
@@ -156,25 +154,11 @@
           <button type="submit" class="btn btn-primary">Save</button>
           <a href="/dashboard" class="btn btn-secondary">Cancel</a>
           {% else %}
-          <button type="submit" class="btn btn-primary" onclick="document.getElementById('sign_in_after').value='1'">
+          <button type="submit" class="btn btn-primary btn-facebook">
             Save &amp; sign in with Facebook
           </button>
-          {% if configured %}
-          <button type="submit" class="btn btn-secondary" onclick="document.getElementById('sign_in_after').value='0'">
-            Save only
-          </button>
-          <a href="/auth/facebook/connect" class="btn btn-facebook">
-            Sign in with Facebook
-          </a>
-          {% endif %}
           {% endif %}
         </div>
-        {% if configured and not user %}
-        <p class="field-hint" style="margin-top: 0.75rem;">
-          Use <strong>Sign in with Facebook</strong> if the App ID above is already yours and saved.
-          Otherwise paste your credentials and click <strong>Save &amp; sign in</strong>.
-        </p>
-        {% endif %}
       </form>
     </div>
   </main>
