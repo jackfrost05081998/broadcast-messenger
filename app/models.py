@@ -124,9 +124,13 @@ class BroadcastRecipient(Base):
 
 class MessageTemplate(Base):
     __tablename__ = "message_templates"
+    __table_args__ = (
+        UniqueConstraint("user_id", "page_id", "name", "kind", name="uq_user_page_template"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    page_id = Column(String(64), nullable=False, index=True)
     name = Column(String(128), nullable=False)
     body = Column(Text, nullable=False)
     kind = Column(String(32), nullable=False, default="general")  # follow_up, reply, general
@@ -144,9 +148,13 @@ class PageAutomation(Base):
     page_id = Column(String(64), nullable=False, index=True)
     follow_up_enabled = Column(Boolean, default=False)
     follow_up_days = Column(Integer, default=7)
-    follow_up_template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
+    follow_up_template_id = Column(
+        Integer, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True
+    )
     reply_enabled = Column(Boolean, default=False)
-    reply_template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
+    reply_template_id = Column(
+        Integer, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True
+    )
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="page_automations")

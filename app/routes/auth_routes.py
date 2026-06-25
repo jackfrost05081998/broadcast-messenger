@@ -20,7 +20,7 @@ from app.meta_app import (
     resolve_meta_credentials,
     set_pending_meta_app,
 )
-from app.models import FacebookAccount, FacebookPage, PageContact, User
+from app.models import FacebookAccount, FacebookPage, User
 
 router = APIRouter(tags=["auth"])
 facebook_router = APIRouter(prefix="/auth/facebook", tags=["facebook"])
@@ -192,8 +192,11 @@ async def facebook_callback(
 
         apply_user_meta_app(user, creds.app_id, creds.app_secret)
 
-        await db.execute(delete(FacebookPage).where(FacebookPage.user_id == user.id))
-        await db.execute(delete(PageContact).where(PageContact.user_id == user.id))
+        existing_pages_result = await db.execute(
+            select(FacebookPage).where(FacebookPage.user_id == user.id)
+        )
+        existing_pages = {p.page_id: p for p in existing_pages_result.scalars().all()}
+
         await db.execute(delete(FacebookAccount).where(FacebookAccount.user_id == user.id))
 
         fb_account = FacebookAccount(
@@ -205,19 +208,35 @@ async def facebook_callback(
         )
         db.add(fb_account)
 
+        seen_page_ids: set[str] = set()
         for page in pages_data:
+            page_id = str(page["id"])
+            seen_page_ids.add(page_id)
             picture = page.get("picture", {}).get("data", {}).get("url")
             page_token = page.get("access_token", "")
-            await facebook_service.subscribe_page_to_messenger(page["id"], page_token)
-            fb_page = FacebookPage(
-                user_id=user.id,
-                page_id=page["id"],
-                name=page.get("name", "Unknown Page"),
-                access_token=page_token,
-                picture_url=picture,
-                category=page.get("category"),
-            )
-            db.add(fb_page)
+            await facebook_service.subscribe_page_to_messenger(page_id, page_token)
+
+            if page_id in existing_pages:
+                fb_page = existing_pages[page_id]
+                fb_page.name = page.get("name", fb_page.name)
+                fb_page.access_token = page_token
+                fb_page.picture_url = picture
+                fb_page.category = page.get("category")
+            else:
+                db.add(
+                    FacebookPage(
+                        user_id=user.id,
+                        page_id=page_id,
+                        name=page.get("name", "Unknown Page"),
+                        access_token=page_token,
+                        picture_url=picture,
+                        category=page.get("category"),
+                    )
+                )
+
+        for page_id, fb_page in existing_pages.items():
+            if page_id not in seen_page_ids:
+                await db.delete(fb_page)
 
         webhook_ok, webhook_msg = await facebook_service.ensure_app_webhook(creds)
         if webhook_ok:
