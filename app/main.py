@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.middleware import SessionRefreshMiddleware
 from app.config import get_settings, is_cloud_deployment
 from app.database import check_database_connection, init_db
 from app.dependencies import get_optional_user
@@ -56,7 +55,6 @@ async def lifespan(app):
 
 def create_app():
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
-    app.add_middleware(SessionRefreshMiddleware)
 
     @app.get("/health")
     async def health():
