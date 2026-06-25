@@ -102,62 +102,18 @@
           </div>
 
           <div class="field">
-            <label class="label" for="follow_up_days">Default follow-up delay (days)</label>
+            <label class="label" for="follow_up_days">Follow-up delay (days)</label>
             <input type="number" id="follow_up_days" name="follow_up_days" class="input" min="1" max="90" value="{{ automation.follow_up_days or 7 }}">
-            <p class="field-hint">Used only when no multi-step schedule is configured below.</p>
           </div>
 
           <div class="field">
-            <label class="label" for="follow_up_template_id">Default follow-up template</label>
+            <label class="label" for="follow_up_template_id">Follow-up template</label>
             <select id="follow_up_template_id" name="follow_up_template_id" class="input">
               <option value="">— Select —</option>
               {% for t in follow_up_templates %}
               <option value="{{ t.id }}" {% if automation.follow_up_template_id == t.id %}selected{% endif %}>{{ t.name }}</option>
               {% endfor %}
             </select>
-          </div>
-
-          <div class="field" style="padding: 1rem; background: var(--surface-2, #f8f9fa); border-radius: 8px;">
-            <label class="label" style="font-weight: 600;">Multi-step follow-up schedule</label>
-            <p class="field-hint" style="margin-bottom: 0.75rem;">
-              Send different templates on different days after each broadcast (e.g. day 7, day 14, day 31).
-            </p>
-            {% if follow_up_steps %}
-            <ul class="text-sm" style="margin: 0 0 1rem; padding-left: 1.25rem;">
-              {% for step in follow_up_steps %}
-              <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                <span><strong>Day {{ step.delay_days }}</strong> — {{ step.template.name if step.template else 'Template missing' }}</span>
-                <form method="post" action="/pages/{{ page.page_id }}/automation/follow-up-step/{{ step.id }}/delete" style="display:inline;">
-                  <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Remove this step?')">Remove</button>
-                </form>
-              </li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="text-muted text-sm" style="margin-bottom: 0.75rem;">No steps yet. Add one below.</p>
-            {% endif %}
-            {% if follow_up_templates %}
-            <form method="post" action="/pages/{{ page.page_id }}/automation/follow-up-step" class="field" style="margin: 0;">
-              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end;">
-                <div>
-                  <label class="label text-sm">Days after broadcast</label>
-                  <input type="number" name="delay_days" class="input" min="1" max="90" value="7" required style="width: 6rem;">
-                </div>
-                <div style="flex: 1; min-width: 10rem;">
-                  <label class="label text-sm">Template</label>
-                  <select name="template_id" class="input" required>
-                    <option value="">— Select —</option>
-                    {% for t in follow_up_templates %}
-                    <option value="{{ t.id }}">{{ t.name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <button type="submit" class="btn btn-secondary btn-sm">Add step</button>
-              </div>
-            </form>
-            {% else %}
-            <p class="text-sm text-muted">Create a follow-up template first.</p>
-            {% endif %}
           </div>
 
           <hr style="border: none; border-top: 1px solid var(--border); margin: 1.25rem 0;">

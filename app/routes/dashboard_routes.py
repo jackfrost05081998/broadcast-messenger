@@ -28,13 +28,12 @@ from app.models import (
     Broadcast,
     BroadcastRecipient,
     FacebookPage,
-    FollowUpScheduleStep,
     MessageTemplate,
     PageAutomation,
     PageContact,
     User,
 )
-from app.scheduler import schedule_follow_up_steps
+from app.scheduler import schedule_follow_ups
 
 logger = logging.getLogger(__name__)
 
@@ -203,17 +202,6 @@ async def page_contacts(
     )
     follow_up_templates = tpl_result.scalars().all()
 
-    steps_result = await db.execute(
-        select(FollowUpScheduleStep)
-        .options(selectinload(FollowUpScheduleStep.template))
-        .where(
-            FollowUpScheduleStep.user_id == user.id,
-            FollowUpScheduleStep.page_id == page_id,
-        )
-        .order_by(FollowUpScheduleStep.delay_days)
-    )
-    follow_up_steps = steps_result.scalars().all()
-
     try:
         messenger_ready = await facebook_service.is_page_subscribed(
             page.page_id, page.access_token
@@ -276,7 +264,6 @@ async def page_contacts(
             "synced_at": synced_at.strftime("%Y-%m-%d %H:%M") if synced_at else None,
             "automation": automation,
             "follow_up_templates": follow_up_templates,
-            "follow_up_steps": follow_up_steps,
         },
     )
 
@@ -331,57 +318,38 @@ async def broadcast_message(
 
         raw_message = message_text.strip()
         should_schedule = schedule_follow_up == "1"
-        schedule_steps: list[tuple[int, int | None, str]] = []
+        follow_up_template_body = None
+        follow_up_tpl_id = None
+        follow_up_days = 7
 
         if should_schedule:
-            steps_result = await db.execute(
-                select(FollowUpScheduleStep)
-                .options(selectinload(FollowUpScheduleStep.template))
-                .where(
-                    FollowUpScheduleStep.user_id == user.id,
-                    FollowUpScheduleStep.page_id == page.page_id,
-                )
-                .order_by(FollowUpScheduleStep.delay_days)
-            )
-            follow_up_steps = steps_result.scalars().all()
-
-            if follow_up_steps:
-                schedule_steps = [
-                    (s.delay_days, s.template_id, s.template.body if s.template else "")
-                    for s in follow_up_steps
-                    if s.template
-                ]
-            elif follow_up_template_id.strip():
-                tpl_result = await db.execute(
-                    select(MessageTemplate).where(
-                        MessageTemplate.id == int(follow_up_template_id),
-                        MessageTemplate.user_id == user.id,
-                        MessageTemplate.page_id == page.page_id,
-                    )
-                )
-                tpl = tpl_result.scalar_one_or_none()
-                if not tpl:
-                    return RedirectResponse(
-                        f"/pages/{page_id}?error=no_follow_up_template", status_code=302
-                    )
-                follow_up_template_body = tpl.body
-                follow_up_tpl_id = tpl.id
-                auto_result = await db.execute(
-                    select(PageAutomation).where(
-                        PageAutomation.user_id == user.id,
-                        PageAutomation.page_id == page.page_id,
-                    )
-                )
-                auto = auto_result.scalar_one_or_none()
-                if auto:
-                    follow_up_days = auto.follow_up_days or 7
-                schedule_steps = [(follow_up_days, follow_up_tpl_id, follow_up_template_body)]
-            else:
+            if not follow_up_template_id.strip():
                 return RedirectResponse(
                     f"/pages/{page_id}?error=no_follow_up_template", status_code=302
                 )
-        else:
-            schedule_steps = []
+            tpl_result = await db.execute(
+                select(MessageTemplate).where(
+                    MessageTemplate.id == int(follow_up_template_id),
+                    MessageTemplate.user_id == user.id,
+                    MessageTemplate.page_id == page.page_id,
+                )
+            )
+            tpl = tpl_result.scalar_one_or_none()
+            if not tpl:
+                return RedirectResponse(
+                    f"/pages/{page_id}?error=no_follow_up_template", status_code=302
+                )
+            follow_up_template_body = tpl.body
+            follow_up_tpl_id = tpl.id
+            auto_result = await db.execute(
+                select(PageAutomation).where(
+                    PageAutomation.user_id == user.id,
+                    PageAutomation.page_id == page.page_id,
+                )
+            )
+            auto = auto_result.scalar_one_or_none()
+            if auto:
+                follow_up_days = auto.follow_up_days or 7
 
         broadcast = Broadcast(
             user_id=user.id,
@@ -436,12 +404,14 @@ async def broadcast_message(
         broadcast.completed_at = datetime.utcnow()
         await db.commit()
 
-        if should_schedule and schedule_steps and successful_recipients:
-            await schedule_follow_up_steps(
+        if should_schedule and follow_up_template_body and successful_recipients:
+            await schedule_follow_ups(
                 user_id=user.id,
                 page_id=page.page_id,
                 recipients=successful_recipients,
-                steps=schedule_steps,
+                template_body=follow_up_template_body,
+                template_id=follow_up_tpl_id,
+                follow_up_days=follow_up_days,
                 source_broadcast_id=broadcast.id,
             )
 
