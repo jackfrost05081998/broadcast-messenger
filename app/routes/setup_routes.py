@@ -22,6 +22,7 @@ from app.meta_app import (
     resolve_meta_credentials,
     save_user_meta_app,
     set_pending_meta_app,
+    set_remember_meta_app,
 )
 from app.models import FacebookAccount, User
 
@@ -149,7 +150,9 @@ async def save_app_setup(
 
     if user:
         await save_user_meta_app(db, user, app_id, app_secret)
-        return RedirectResponse("/setup/app?saved=1&edit=1", status_code=302)
+        response = RedirectResponse("/setup/app?saved=1&edit=1", status_code=302)
+        set_remember_meta_app(response, app_id, app_secret)
+        return response
 
     # Local-only convenience: still write .env when not on cloud.
     if not is_cloud_deployment():
@@ -164,8 +167,10 @@ async def save_app_setup(
     if sign_in_after == "1" and creds.configured:
         response = RedirectResponse("/auth/facebook/connect", status_code=303)
         set_pending_meta_app(response, app_id, app_secret)
+        set_remember_meta_app(response, app_id, app_secret)
         return response
 
     response = RedirectResponse("/setup/app?saved=1", status_code=302)
     set_pending_meta_app(response, app_id, app_secret)
+    set_remember_meta_app(response, app_id, app_secret)
     return response

@@ -22,8 +22,8 @@
       {% else %}
       <h1 class="panel-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Sign in with your Meta Developer app</h1>
       <p class="text-muted text-sm" style="margin: 0;">
-        Before connecting Facebook, paste <strong>your</strong> App ID and App Secret below.
-        Each person uses their own Meta app — credentials are saved to your account, not shared with other users.
+        Before connecting Facebook, paste <strong>your</strong> App ID and App Secret below (once per browser).
+        Your login stays active on this browser until you click Log out. Each browser keeps its own session.
       </p>
       {% endif %}
     </div>
@@ -82,8 +82,9 @@
     </div>
     {% elif configured and not user and not error %}
     <div class="alert alert-info" style="margin-bottom: 1rem;">
-      <strong>Already configured.</strong> If this is your Meta app, scroll down and click <strong>Sign in with Facebook</strong>.
-      If you see “App not active”, replace the values below with <em>your</em> App ID and Secret.
+      <strong>Welcome back on this browser.</strong> Your Meta app is remembered — click
+      <strong>Sign in with Facebook</strong> below. You do not need to re-enter App ID and Secret
+      unless you changed Meta apps.
     </div>
     {% endif %}
 

@@ -62,7 +62,8 @@ class Settings:
         self.facebook_app_secret = os.getenv("FACEBOOK_APP_SECRET", "").strip()
         self.facebook_api_version = os.getenv("FACEBOOK_API_VERSION", "v21.0")
         self.session_cookie_name = "session_token"
-        self.session_max_age = 60 * 60 * 24 * 30
+        # ~10 years — persistent login per browser until explicit logout
+        self.session_max_age = 60 * 60 * 24 * 365 * 10
         self.webhook_verify_token = os.getenv(
             "WEBHOOK_VERIFY_TOKEN", self.secret_key[:32]
         )

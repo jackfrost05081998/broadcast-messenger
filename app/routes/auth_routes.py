@@ -17,8 +17,10 @@ from app.facebook import FacebookAPIError, FacebookConfigError, facebook_service
 from app.meta_app import (
     apply_user_meta_app,
     clear_pending_meta_app,
+    clear_remember_meta_app,
     resolve_meta_credentials,
     set_pending_meta_app,
+    set_remember_meta_app,
 )
 from app.models import FacebookAccount, FacebookPage, User
 
@@ -116,6 +118,8 @@ async def register_redirect():
 async def logout():
     redirect = RedirectResponse("/setup/app", status_code=302)
     redirect.delete_cookie(settings.session_cookie_name)
+    clear_remember_meta_app(redirect)
+    clear_pending_meta_app(redirect)
     return redirect
 
 
@@ -258,6 +262,7 @@ async def facebook_callback(
 
     response = RedirectResponse("/dashboard", status_code=302)
     clear_pending_meta_app(response)
+    set_remember_meta_app(response, creds.app_id, creds.app_secret)
     return _set_session_cookie(response, user.id)
 
 
