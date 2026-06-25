@@ -9,15 +9,19 @@ from app.models import Base
 settings = get_settings()
 
 connect_args: dict = {}
+engine_kwargs: dict = {
+    "echo": False,
+    "connect_args": connect_args,
+    "pool_pre_ping": True,
+}
 if is_postgres_url(settings.database_url):
     connect_args["ssl"] = "require"
+    # Recycle before Neon closes idle connections (~5 min on free tier).
+    engine_kwargs["pool_recycle"] = 280
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+engine = create_async_engine(settings.database_url, **engine_kwargs)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

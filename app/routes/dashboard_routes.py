@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.config import get_settings
 from app.contact_utils import is_within_24h_window
 from app.contacts import get_page_contacts
-from app.database import get_db
+from app.database import async_session, get_db
 from app.dependencies import get_optional_user
 from app.meta_app import credentials_from_user
 from app.facebook import (
@@ -355,6 +355,9 @@ async def broadcast_message(
         )
         db.add(broadcast)
         await db.flush()
+        broadcast_id = broadcast.id
+        # Commit before long Meta API sends so Neon does not close our idle connection.
+        await db.commit()
 
         sem = asyncio.Semaphore(SEND_CONCURRENCY)
         tasks = [
@@ -374,15 +377,16 @@ async def broadcast_message(
         success_count = 0
         failure_count = 0
         successful_recipients: list[tuple[str, str | None]] = []
+        recipient_rows: list[dict] = []
         for psid, (ok, err) in zip(psids, results):
-            db.add(
-                BroadcastRecipient(
-                    broadcast_id=broadcast.id,
-                    recipient_psid=psid,
-                    recipient_name=name_map.get(psid),
-                    success=ok,
-                    error_message=err,
-                )
+            recipient_rows.append(
+                {
+                    "broadcast_id": broadcast_id,
+                    "recipient_psid": psid,
+                    "recipient_name": name_map.get(psid),
+                    "success": ok,
+                    "error_message": err,
+                }
             )
             if ok:
                 success_count += 1
@@ -390,11 +394,27 @@ async def broadcast_message(
             else:
                 failure_count += 1
 
-        broadcast.success_count = success_count
-        broadcast.failure_count = failure_count
-        broadcast.status = "completed"
-        broadcast.completed_at = datetime.utcnow()
-        await db.commit()
+        async def _persist_broadcast_results() -> None:
+            async with async_session() as save_db:
+                saved = await save_db.get(Broadcast, broadcast_id)
+                if not saved:
+                    raise RuntimeError(f"Broadcast {broadcast_id} not found")
+                for row in recipient_rows:
+                    save_db.add(BroadcastRecipient(**row))
+                saved.success_count = success_count
+                saved.failure_count = failure_count
+                saved.status = "completed"
+                saved.completed_at = datetime.utcnow()
+                await save_db.commit()
+
+        try:
+            await _persist_broadcast_results()
+        except Exception:
+            logger.exception(
+                "Broadcast save failed for id=%s, retrying with fresh connection",
+                broadcast_id,
+            )
+            await _persist_broadcast_results()
 
         if should_schedule and follow_up_template_body and successful_recipients:
             await schedule_follow_ups(
@@ -404,16 +424,19 @@ async def broadcast_message(
                 template_body=follow_up_template_body,
                 template_id=follow_up_tpl_id,
                 follow_up_days=follow_up_days,
-                source_broadcast_id=broadcast.id,
+                source_broadcast_id=broadcast_id,
             )
 
-        return RedirectResponse(f"/broadcasts/{broadcast.id}", status_code=302)
+        return RedirectResponse(f"/broadcasts/{broadcast_id}", status_code=302)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Broadcast failed for page %s", page_id)
-        await db.rollback()
+        try:
+            await db.rollback()
+        except Exception:
+            pass
         msg = quote(str(e)[:200])
         return RedirectResponse(
             f"/pages/{page_id}?error=broadcast_failed&message={msg}",
