@@ -1,23 +1,30 @@
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from sqlalchemy import inspect, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.models import Base
 
 settings = get_settings()
 
-connect_args = {}
-if settings.database_url.startswith("postgresql"):
-    if "neon.tech" in settings.database_url or "sslmode=require" in settings.database_url:
-        connect_args = {"ssl": "require"}
+_db_error = settings.database_config_error
+if _db_error:
+    raise RuntimeError(_db_error)
+if not settings.database_url:
+    raise RuntimeError("DATABASE_URL is not configured.")
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+connect_args: dict = {}
+engine_kwargs: dict = {
+    "echo": False,
+    "connect_args": connect_args,
+    "pool_pre_ping": True,
+}
+
+if settings.uses_postgres:
+    connect_args["ssl"] = "require"
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
+
+engine = create_async_engine(settings.database_url, **engine_kwargs)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -50,7 +57,6 @@ def _ensure_message_template_page_id(connection) -> None:
     columns = {column["name"] for column in inspector.get_columns("message_templates")}
     if "page_id" not in columns:
         connection.execute(text("ALTER TABLE message_templates ADD COLUMN page_id VARCHAR(64)"))
-        # Legacy rows: attach to the first automation page for that user when possible.
         connection.execute(
             text(
                 """
@@ -89,15 +95,6 @@ def _ensure_message_template_page_id(connection) -> None:
         )
 
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_ensure_user_meta_columns)
-        await conn.run_sync(_ensure_page_contact_auto_reply_columns)
-        await conn.run_sync(_ensure_message_template_page_id)
-        await conn.run_sync(_ensure_page_automation_reply_cooldown)
-
-
 def _ensure_page_automation_reply_cooldown(connection) -> None:
     inspector = inspect(connection)
     if "page_automations" not in inspector.get_table_names():
@@ -107,6 +104,21 @@ def _ensure_page_automation_reply_cooldown(connection) -> None:
         connection.execute(
             text("ALTER TABLE page_automations ADD COLUMN reply_cooldown_hours INTEGER DEFAULT 24")
         )
+
+
+async def check_database_connection() -> bool:
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+    return True
+
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_user_meta_columns)
+        await conn.run_sync(_ensure_page_contact_auto_reply_columns)
+        await conn.run_sync(_ensure_message_template_page_id)
+        await conn.run_sync(_ensure_page_automation_reply_cooldown)
 
 
 async def get_db():

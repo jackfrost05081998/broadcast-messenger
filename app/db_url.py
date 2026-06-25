@@ -1,7 +1,13 @@
 def normalize_database_url(url: str) -> str:
     """Convert standard Postgres URLs to SQLAlchemy async format."""
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+asyncpg://", 1)
-    if url.startswith("postgresql://") and "+asyncpg" not in url:
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return url
+    cleaned = url.strip()
+    if cleaned.startswith("postgres://"):
+        return cleaned.replace("postgres://", "postgresql+asyncpg://", 1)
+    if cleaned.startswith("postgresql://") and "+asyncpg" not in cleaned:
+        return cleaned.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return cleaned
+
+
+def is_postgres_url(url: str) -> bool:
+    normalized = normalize_database_url(url)
+    return normalized.startswith("postgresql")
