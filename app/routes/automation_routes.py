@@ -35,6 +35,36 @@ async def _get_page(user_id: int, page_id: str, db: AsyncSession) -> FacebookPag
     return result.scalar_one_or_none()
 
 
+async def _get_page_templates(
+    user_id: int, page_id: str, db: AsyncSession
+) -> tuple[list[MessageTemplate], list[MessageTemplate]]:
+    tpl_result = await db.execute(
+        select(MessageTemplate)
+        .where(
+            MessageTemplate.user_id == user_id,
+            MessageTemplate.page_id == page_id,
+        )
+        .order_by(MessageTemplate.kind, MessageTemplate.name)
+    )
+    all_templates = tpl_result.scalars().all()
+    follow_up_templates = [t for t in all_templates if t.kind == "follow_up"]
+    reply_templates = [t for t in all_templates if t.kind == "reply"]
+    return follow_up_templates, reply_templates
+
+
+async def _get_page_template(
+    user_id: int, page_id: str, template_id: int, db: AsyncSession
+) -> MessageTemplate | None:
+    result = await db.execute(
+        select(MessageTemplate).where(
+            MessageTemplate.id == template_id,
+            MessageTemplate.user_id == user_id,
+            MessageTemplate.page_id == page_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def _get_or_create_automation(
     user_id: int, page_id: str, db: AsyncSession
 ) -> PageAutomation:
@@ -74,14 +104,7 @@ async def page_automation(
     automation = await _get_or_create_automation(user.id, page_id, db)
     await db.commit()
 
-    tpl_result = await db.execute(
-        select(MessageTemplate)
-        .where(MessageTemplate.user_id == user.id)
-        .order_by(MessageTemplate.kind, MessageTemplate.name)
-    )
-    all_templates = tpl_result.scalars().all()
-    follow_up_templates = [t for t in all_templates if t.kind == "follow_up"]
-    reply_templates = [t for t in all_templates if t.kind == "reply"]
+    follow_up_templates, reply_templates = await _get_page_templates(user.id, page_id, db)
 
     saved = request.query_params.get("saved") == "1"
     webhook_status = None
@@ -130,13 +153,23 @@ async def save_page_automation(
     automation = await _get_or_create_automation(user.id, page_id, db)
     automation.follow_up_enabled = follow_up_enabled == "1"
     automation.follow_up_days = max(1, min(follow_up_days, 90))
-    automation.follow_up_template_id = (
-        int(follow_up_template_id) if follow_up_template_id.strip() else None
-    )
+    automation.follow_up_template_id = None
+    automation.reply_template_id = None
+
+    if follow_up_template_id.strip():
+        follow_tpl = await _get_page_template(
+            user.id, page_id, int(follow_up_template_id), db
+        )
+        if follow_tpl:
+            automation.follow_up_template_id = follow_tpl.id
+
     automation.reply_enabled = reply_enabled == "1"
-    automation.reply_template_id = (
-        int(reply_template_id) if reply_template_id.strip() else None
-    )
+    if reply_template_id.strip():
+        reply_tpl = await _get_page_template(
+            user.id, page_id, int(reply_template_id), db
+        )
+        if reply_tpl:
+            automation.reply_template_id = reply_tpl.id
 
     if automation.reply_enabled:
         creds = credentials_from_user(user)
@@ -167,8 +200,16 @@ async def create_template(
     if kind not in ("follow_up", "reply", "general"):
         kind = "general"
 
+    if not page_id.strip():
+        return RedirectResponse("/dashboard?error=missing_page", status_code=302)
+
+    page = await _get_page(user.id, page_id.strip(), db)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+
     template = MessageTemplate(
         user_id=user.id,
+        page_id=page.page_id,
         name=name.strip()[:128],
         body=body.strip(),
         kind=kind,
@@ -192,12 +233,13 @@ async def delete_template(
         return auth
     user = auth
 
-    result = await db.execute(
-        select(MessageTemplate).where(
-            MessageTemplate.id == template_id,
-            MessageTemplate.user_id == user.id,
-        )
+    query = select(MessageTemplate).where(
+        MessageTemplate.id == template_id,
+        MessageTemplate.user_id == user.id,
     )
+    if page_id.strip():
+        query = query.where(MessageTemplate.page_id == page_id.strip())
+    result = await db.execute(query)
     template = result.scalar_one_or_none()
     if template:
         await db.delete(template)

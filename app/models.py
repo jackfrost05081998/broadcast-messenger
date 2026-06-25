@@ -124,9 +124,13 @@ class BroadcastRecipient(Base):
 
 class MessageTemplate(Base):
     __tablename__ = "message_templates"
+    __table_args__ = (
+        UniqueConstraint("user_id", "page_id", "name", "kind", name="uq_user_page_template"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    page_id = Column(String(64), nullable=False, index=True)
     name = Column(String(128), nullable=False)
     body = Column(Text, nullable=False)
     kind = Column(String(32), nullable=False, default="general")  # follow_up, reply, general

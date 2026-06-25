@@ -43,6 +43,49 @@ def _ensure_page_contact_auto_reply_columns(connection) -> None:
         connection.execute(text("ALTER TABLE page_contacts ADD COLUMN auto_reply_sent_at TIMESTAMP"))
 
 
+def _ensure_message_template_page_id(connection) -> None:
+    inspector = inspect(connection)
+    if "message_templates" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("message_templates")}
+    if "page_id" not in columns:
+        connection.execute(text("ALTER TABLE message_templates ADD COLUMN page_id VARCHAR(64)"))
+        connection.execute(
+            text(
+                """
+                UPDATE message_templates AS t
+                SET page_id = (
+                    SELECT pa.page_id
+                    FROM page_automations AS pa
+                    WHERE pa.user_id = t.user_id
+                      AND (
+                        pa.follow_up_template_id = t.id
+                        OR pa.reply_template_id = t.id
+                      )
+                    LIMIT 1
+                )
+                WHERE t.page_id IS NULL
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE message_templates AS t
+                SET page_id = (
+                    SELECT fp.page_id
+                    FROM facebook_pages AS fp
+                    WHERE fp.user_id = t.user_id
+                    ORDER BY fp.connected_at ASC
+                    LIMIT 1
+                )
+                WHERE t.page_id IS NULL
+                """
+            )
+        )
+        connection.execute(text("DELETE FROM message_templates WHERE page_id IS NULL"))
+
+
 def _ensure_facebook_page_picture_url_text(connection) -> None:
     inspector = inspect(connection)
     if "facebook_pages" not in inspector.get_table_names():
@@ -68,6 +111,7 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_user_meta_columns)
         await conn.run_sync(_ensure_page_contact_auto_reply_columns)
+        await conn.run_sync(_ensure_message_template_page_id)
         await conn.run_sync(_ensure_facebook_page_picture_url_text)
 
 
