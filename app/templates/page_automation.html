@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Automation — {{ page.name }}{% endblock %}
+{% block title %}{% if app_review_mode %}Settings{% else %}Automation{% endif %} — {{ page.name }}{% endblock %}
 {% block body %}
 <div class="page">
   <header class="site-header">
@@ -7,7 +7,7 @@
       <div class="breadcrumb">
         <a href="/pages/{{ page.page_id }}" class="breadcrumb-back">← Contacts</a>
         <span class="breadcrumb-divider">|</span>
-        <span class="breadcrumb-current">Automation</span>
+        <span class="breadcrumb-current">{% if app_review_mode %}Settings{% else %}Automation{% endif %}</span>
       </div>
       <span class="user-badge">{{ user.name }}</span>
     </div>
@@ -19,20 +19,27 @@
     {% endif %}
 
     <div class="page-heading">
-      <h1>Automation — {{ page.name }}</h1>
+      <h1>{% if app_review_mode %}Settings{% else %}Automation{% endif %} — {{ page.name }}</h1>
+      {% if app_review_mode %}
+      <p>Configure auto-reply when someone messages your Page on Messenger.</p>
+      {% else %}
       <p>Templates are personalized automatically: <strong>Hi <em>First name</em>,</strong> then your message.</p>
+      {% endif %}
     </div>
 
-    <div class="two-col">
+    <div class="{% if app_review_mode %}single-col{% else %}two-col{% endif %}">
       <div class="card">
-        <h2 class="panel-title" style="margin-bottom: 1rem;">Message templates</h2>
+        <h2 class="panel-title" style="margin-bottom: 1rem;">
+          {% if app_review_mode %}Auto-reply templates{% else %}Message templates{% endif %}
+        </h2>
 
         <form method="post" action="/templates" class="field" style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
           <input type="hidden" name="page_id" value="{{ page.page_id }}">
           <div class="field">
             <label class="label">Template name</label>
-            <input type="text" name="name" class="input" placeholder="e.g. Week 1 follow-up" required>
+            <input type="text" name="name" class="input" placeholder="{% if app_review_mode %}e.g. Welcome reply{% else %}e.g. Week 1 follow-up{% endif %}" required>
           </div>
+          {% if not app_review_mode %}
           <div class="field">
             <label class="label">Type</label>
             <select name="kind" class="input">
@@ -40,15 +47,18 @@
               <option value="reply">Auto-reply (when they message you)</option>
             </select>
           </div>
+          {% else %}
+          <input type="hidden" name="kind" value="reply">
+          {% endif %}
           <div class="field">
             <label class="label">Message body</label>
-            <textarea name="body" rows="4" class="input" required placeholder="Just checking in — did you still have questions about the property?"></textarea>
+            <textarea name="body" rows="4" class="input" required placeholder="Thanks for messaging us! How can we help you today?"></textarea>
             <p class="field-hint">We add <code>Hi FirstName,</code> automatically before this text.</p>
           </div>
           <button type="submit" class="btn btn-secondary btn-sm">Add template</button>
         </form>
 
-        {% if follow_up_templates %}
+        {% if not app_review_mode and follow_up_templates %}
         <h3 class="text-sm" style="margin-bottom: 0.5rem; font-weight: 600;">Follow-up templates</h3>
         <ul class="text-sm" style="margin: 0 0 1rem; padding-left: 1.25rem;">
           {% for t in follow_up_templates %}
@@ -84,15 +94,22 @@
         </ul>
         {% endif %}
 
-        {% if not follow_up_templates and not reply_templates %}
+        {% if app_review_mode %}
+        {% if not reply_templates %}
+        <p class="text-muted text-sm">No auto-reply templates yet. Create one above.</p>
+        {% endif %}
+        {% elif not follow_up_templates and not reply_templates %}
         <p class="text-muted text-sm">No templates yet. Create one above.</p>
         {% endif %}
       </div>
 
       <div class="card">
+        {% if not app_review_mode %}
         <h2 class="panel-title" style="margin-bottom: 1rem;">Automation rules</h2>
+        {% endif %}
 
         <form method="post" action="/pages/{{ page.page_id }}/automation">
+          {% if not app_review_mode %}
           <div class="field">
             <label class="label" style="display: flex; align-items: center; gap: 0.5rem;">
               <input type="checkbox" name="follow_up_enabled" value="1" {% if automation.follow_up_enabled %}checked{% endif %}>
@@ -117,6 +134,7 @@
           </div>
 
           <hr style="border: none; border-top: 1px solid var(--border); margin: 1.25rem 0;">
+          {% endif %}
 
           <div class="field">
             <label class="label" style="display: flex; align-items: center; gap: 0.5rem;">
@@ -136,7 +154,7 @@
             </select>
           </div>
 
-          <button type="submit" class="btn btn-primary">Save automation</button>
+          <button type="submit" class="btn btn-primary">{% if app_review_mode %}Save settings{% else %}Save automation{% endif %}</button>
         </form>
 
         <div class="alert alert-info text-sm" style="margin-top: 1.5rem;">
@@ -155,7 +173,7 @@
             {% elif webhook_status.callback_url %}
               <span style="color: var(--warning, #d97706);">Registered but URL mismatch</span>
               — Meta has <code>{{ webhook_status.callback_url }}</code>, expected <code>{{ webhook_status.expected_url }}</code>.
-              Save automation again or update Meta manually.
+              {% if app_review_mode %}Save settings again{% else %}Save automation again{% endif %} or update Meta manually.
             {% else %}
               <span style="color: var(--warning, #d97706);">Not registered</span>
               — enable auto-reply above and click Save to register automatically.

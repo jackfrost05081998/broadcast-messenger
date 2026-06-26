@@ -8,7 +8,7 @@
         <a href="/dashboard" class="breadcrumb-back">← Back</a>
         <span class="breadcrumb-divider">|</span>
         <span class="breadcrumb-current">{{ page.name }}</span>
-        <a href="/pages/{{ page.page_id }}/automation" class="header-link" style="margin-left: auto;">Automation →</a>
+        <a href="/pages/{{ page.page_id }}/automation" class="header-link" style="margin-left: auto;">{% if app_review_mode %}Settings{% else %}Automation{% endif %} →</a>
       </div>
       <span class="user-badge">{{ user.name }}</span>
     </div>
@@ -19,6 +19,7 @@
     <div class="alert alert-error">{{ form_error }}</div>
     {% endif %}
 
+    {% if not app_review_mode %}
     <div class="alert alert-warning text-sm" style="margin-bottom: 1rem;">
       <strong>Why some contacts fail:</strong> Meta blocks most old inquirer broadcasts until your app is approved for
       <strong>Human Agent</strong> message tags.
@@ -26,6 +27,7 @@
       {% if recent_count %}<span class="badge badge-success" style="margin-left: 0.5rem;">~{{ recent_count }} likely within 24h</span>{% endif %}
       <a href="/go-live" class="link" style="margin-left: 0.25rem;">App Review guide →</a>
     </div>
+    {% endif %}
 
     <div class="alert alert-info text-sm" style="margin-bottom: 1rem;">
       {% if synced_at %}
@@ -38,6 +40,43 @@
       {% endif %}
     </div>
 
+    {% if app_review_mode %}
+    <div class="card">
+      <div class="panel-header">
+        <h1 class="panel-title">Inquirers</h1>
+        <span class="panel-count">{{ contacts|length }}</span>
+      </div>
+
+      {% if contacts %}
+      <div class="contacts-panel">
+        {% for contact in contacts %}
+        <div class="contact-row contact-row-static" data-psid="{{ contact.psid }}">
+          <div class="contact-avatar">{{ contact.name[0] if contact.name else "?" }}</div>
+          <div class="contact-info">
+            <div class="contact-name">
+              {{ contact.name }}
+              {% if contact.within_24h %}<span class="badge badge-success" style="font-size: 0.65rem; margin-left: 0.35rem;">24h</span>{% endif %}
+            </div>
+            <div class="contact-meta">
+              {{ contact.message_count }} messages
+              {% if contact.updated_time %} · {{ contact.updated_time[:10] }}{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <p>No inquirers found. Make sure people have messaged your Page on Messenger.</p>
+        <a href="/pages/{{ page.page_id }}?refresh=1" class="btn btn-secondary btn-sm">Refresh</a>
+      </div>
+      {% endif %}
+
+      <p class="text-sm text-muted" style="margin-top: 1rem;">
+        <a href="/pages/{{ page.page_id }}/automation" class="link">Settings</a> — configure auto-reply when someone messages your Page.
+      </p>
+    </div>
+    {% else %}
     <form method="post" action="/pages/{{ page.page_id }}/broadcast" id="broadcast-form">
       <div class="two-col">
         <div class="card">
@@ -124,7 +163,7 @@
           </div>
           {% else %}
           <p class="text-sm text-muted">
-            <a href="/pages/{{ page.page_id }}/automation" class="link">Create follow-up templates</a> to schedule a message one week later.
+            <a href="/pages/{{ page.page_id }}/automation" class="link">Settings</a> to schedule a message one week later.
           </p>
           {% endif %}
 
@@ -162,9 +201,11 @@
         </div>
       </div>
     </form>
+    {% endif %}
   </main>
 </div>
 
+{% if not app_review_mode %}
 <script>
 const PAGE_ID = {{ page.page_id | tojson }};
 const ACTIVE_BROADCAST_ID = {{ active_broadcast_id | tojson }};
@@ -311,4 +352,5 @@ if (ACTIVE_BROADCAST_ID) {
   startPolling(ACTIVE_BROADCAST_ID);
 }
 </script>
+{% endif %}
 {% endblock %}

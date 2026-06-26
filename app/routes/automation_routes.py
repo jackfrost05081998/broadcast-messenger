@@ -126,6 +126,7 @@ async def page_automation(
             "webhook_verify_token": settings.webhook_verify_token,
             "webhook_status": webhook_status,
             "saved": saved,
+            "app_review_mode": settings.app_review_mode,
         },
     )
 

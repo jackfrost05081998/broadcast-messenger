@@ -23,7 +23,7 @@
 
     <div class="page-heading">
       <h1>Your Facebook Pages</h1>
-      <p>Select a Page to view contacts and send broadcast messages.</p>
+      <p>{% if app_review_mode %}Select a Page to view Messenger inquirers and configure auto-reply.{% else %}Select a Page to view contacts and send broadcast messages.{% endif %}</p>
     </div>
 
     {% if pages %}

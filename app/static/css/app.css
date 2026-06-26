@@ -754,6 +754,21 @@ textarea.input {
   }
 }
 
+.single-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 40rem;
+}
+
+.contact-row-static {
+  cursor: default;
+}
+
+.contact-row-static:hover {
+  background: transparent;
+}
+
 /* Stats */
 .stats-grid {
   display: grid;

@@ -74,6 +74,7 @@ async def dashboard(
             "pages": user.pages,
             "facebook_name": user.facebook_account.name if user.facebook_account else user.name,
             "message": message,
+            "app_review_mode": settings.app_review_mode,
         },
     )
 
@@ -212,6 +213,7 @@ async def page_contacts(
             "automation": automation,
             "follow_up_templates": follow_up_templates,
             "active_broadcast_id": active_broadcast_id,
+            "app_review_mode": settings.app_review_mode,
         },
     )
 

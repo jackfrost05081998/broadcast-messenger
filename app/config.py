@@ -62,6 +62,12 @@ class Settings:
             "WEBHOOK_VERIFY_TOKEN", self.secret_key[:32]
         )
         self.max_page_contacts = int(os.getenv("MAX_PAGE_CONTACTS", "5000"))
+        # Temporary UI for Meta App Review (pages_messaging). Set APP_REVIEW_MODE=false to restore broadcast UI.
+        self.app_review_mode = os.getenv("APP_REVIEW_MODE", "true").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
 
     @property
     def facebook_configured(self) -> bool:
