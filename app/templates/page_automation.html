@@ -141,7 +141,25 @@
               <input type="checkbox" name="reply_enabled" value="1" {% if automation.reply_enabled %}checked{% endif %}>
               Auto-reply when an inquirer messages your Page
             </label>
-            <p class="field-hint">Requires Messenger webhook setup in your Meta app (see below). Auto-reply sends once per conversation — not on follow-up messages within 24 hours, or on messages sent more than 24 hours after the first.</p>
+            <p class="field-hint">Requires Messenger webhook setup in your Meta app (see below). Works even when you are not logged in — Meta sends webhooks to this server.</p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="reply_interval_hours">Reply every</label>
+            <select id="reply_interval_hours" name="reply_interval_hours" class="input">
+              {% set interval = automation.reply_interval_hours if automation.reply_interval_hours is not none else 1 %}
+              <option value="0" {% if interval == 0 %}selected{% endif %}>Every message (no wait)</option>
+              <option value="1" {% if interval == 1 %}selected{% endif %}>1 hour</option>
+              <option value="2" {% if interval == 2 %}selected{% endif %}>2 hours</option>
+              <option value="3" {% if interval == 3 %}selected{% endif %}>3 hours</option>
+              <option value="6" {% if interval == 6 %}selected{% endif %}>6 hours</option>
+              <option value="12" {% if interval == 12 %}selected{% endif %}>12 hours</option>
+              <option value="24" {% if interval == 24 %}selected{% endif %}>24 hours (1 day)</option>
+              <option value="48" {% if interval == 48 %}selected{% endif %}>48 hours (2 days)</option>
+              <option value="72" {% if interval == 72 %}selected{% endif %}>72 hours (3 days)</option>
+              <option value="168" {% if interval == 168 %}selected{% endif %}>168 hours (1 week)</option>
+            </select>
+            <p class="field-hint">How long to wait before auto-replying again to the same person when they message you.</p>
           </div>
 
           <div class="field">

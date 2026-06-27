@@ -104,6 +104,17 @@ def _ensure_broadcast_recipient_nullable_success(connection) -> None:
             break
 
 
+def _ensure_page_automation_reply_interval(connection) -> None:
+    inspector = inspect(connection)
+    if "page_automations" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("page_automations")}
+    if "reply_interval_hours" not in columns:
+        connection.execute(
+            text("ALTER TABLE page_automations ADD COLUMN reply_interval_hours INTEGER DEFAULT 1")
+        )
+
+
 def _ensure_facebook_page_picture_url_text(connection) -> None:
     inspector = inspect(connection)
     if "facebook_pages" not in inspector.get_table_names():
@@ -131,6 +142,7 @@ async def init_db():
         await conn.run_sync(_ensure_page_contact_auto_reply_columns)
         await conn.run_sync(_ensure_message_template_page_id)
         await conn.run_sync(_ensure_broadcast_recipient_nullable_success)
+        await conn.run_sync(_ensure_page_automation_reply_interval)
         await conn.run_sync(_ensure_facebook_page_picture_url_text)
 
 

@@ -51,16 +51,18 @@ def _event_inbound_at(event: dict) -> datetime:
     return datetime.utcnow()
 
 
-def _should_send_auto_reply(contact: PageContact | None, inbound_at: datetime) -> bool:
-    """Only auto-reply to the first inbound message in a session.
-
-    Skip follow-ups within 24 hours, and skip re-engagement messages that arrive
-    more than 24 hours after the previous inbound (no repeat auto-reply).
-    """
-    if not contact or not contact.last_inbound_at:
+def _should_send_auto_reply(
+    contact: PageContact | None,
+    inbound_at: datetime,
+    interval_hours: int,
+) -> bool:
+    """Send auto-reply on first contact message, then again after the configured interval."""
+    if not contact or not contact.auto_reply_sent_at:
         return True
-    gap = inbound_at - contact.last_inbound_at
-    return gap < timedelta(hours=24) and not contact.auto_reply_sent_at
+    if interval_hours <= 0:
+        return True
+    elapsed = inbound_at - contact.auto_reply_sent_at
+    return elapsed >= timedelta(hours=interval_hours)
 
 
 @router.get("/messenger")
@@ -148,6 +150,16 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             continue
 
         template_body = automation.reply_template.body
+        reply_interval_hours = automation.reply_interval_hours or 0
+        subscribed = await facebook_service.subscribe_page_to_messenger(
+            page.page_id, page.access_token
+        )
+        if not subscribed:
+            logger.warning(
+                "Page %s not subscribed to Messenger app — check Page token",
+                page_id,
+            )
+
         events = entry.get("messaging", [])
         logger.warning(
             "Auto-reply processing %s event(s) for page %s (reply_enabled=true)",
@@ -176,19 +188,15 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             )
             contact = contact_result.scalar_one_or_none()
 
-            if not _should_send_auto_reply(contact, inbound_at):
+            if not _should_send_auto_reply(contact, inbound_at, reply_interval_hours):
                 if contact:
-                    if contact.last_inbound_at and inbound_at - contact.last_inbound_at >= timedelta(
-                        hours=24
-                    ):
-                        logger.warning(
-                            "Skipping auto-reply — follow-up after 24h for psid %s on page %s",
-                            sender_psid,
-                            page_id,
-                        )
-                    else:
-                        logger.warning(
-                            "Skipping auto-reply — not first message in session for psid %s on page %s",
+                    if contact.auto_reply_sent_at and reply_interval_hours > 0:
+                        elapsed = inbound_at - contact.auto_reply_sent_at
+                        logger.info(
+                            "Skipping auto-reply — interval %sh not elapsed (%.0fm since last) "
+                            "for psid %s on page %s",
+                            reply_interval_hours,
+                            elapsed.total_seconds() / 60,
                             sender_psid,
                             page_id,
                         )

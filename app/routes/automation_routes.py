@@ -138,6 +138,7 @@ async def save_page_automation(
     follow_up_days: int = Form(7),
     follow_up_template_id: str = Form(""),
     reply_enabled: str = Form(""),
+    reply_interval_hours: int = Form(1),
     reply_template_id: str = Form(""),
     user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
@@ -165,6 +166,10 @@ async def save_page_automation(
             automation.follow_up_template_id = follow_tpl.id
 
     automation.reply_enabled = reply_enabled == "1"
+    allowed_intervals = {0, 1, 2, 3, 6, 12, 24, 48, 72, 168}
+    automation.reply_interval_hours = (
+        reply_interval_hours if reply_interval_hours in allowed_intervals else 1
+    )
     if reply_template_id.strip():
         reply_tpl = await _get_page_template(
             user.id, page_id, int(reply_template_id), db

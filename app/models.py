@@ -150,6 +150,7 @@ class PageAutomation(Base):
     follow_up_days = Column(Integer, default=7)
     follow_up_template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
     reply_enabled = Column(Boolean, default=False)
+    reply_interval_hours = Column(Integer, default=1)
     reply_template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
